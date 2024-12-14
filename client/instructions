@@ -1,2 +1,4 @@
 npm install ethers axios chart.js react-chartjs-2
 
+# if needed:
+cp .env.example .env
