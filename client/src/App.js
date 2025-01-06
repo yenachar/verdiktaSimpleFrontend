@@ -5,6 +5,7 @@ import { Chart, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import './App.css';
 import { ethers } from 'ethers';
+import FormData from 'form-data';
 
 // Register Chart.js components
 Chart.register(CategoryScale, LinearScale, BarElement);
@@ -32,13 +33,6 @@ const CONTRACT_ABI = [
   'function getEvaluation(bytes32 _requestId) public view returns (uint256[] memory likelihoods, string memory justificationCID, bool exists)'
 ];
 
-const IPFS_GATEWAYS = [
-  'https://ipfs.io/ipfs/',
-  'https://gateway.pinata.cloud/ipfs/',
-  'https://cloudflare-ipfs.com/ipfs/',
-  'https://gateway.ipfs.io/ipfs/'
-];
-
 // Add near the top with other constants
 const CONTRACT_ADDRESSES = (process.env.REACT_APP_CONTRACT_ADDRESSES || '').split(',');
 const CONTRACT_NAMES = (process.env.REACT_APP_CONTRACT_NAMES || '').split(',');
@@ -48,6 +42,112 @@ const CONTRACT_OPTIONS = CONTRACT_ADDRESSES.map((address, index) => ({
   address,
   name: CONTRACT_NAMES[index] || `Contract ${index + 1}`
 }));
+
+// Add this function near the top with other utility functions
+const checkContractFunding = async (contract, provider) => {
+  const config = await contract.getContractConfig();
+  const linkToken = new ethers.Contract(
+    config.linkAddr,
+    ['function balanceOf(address) view returns (uint256)'],
+    provider
+  );
+  
+  const balance = await linkToken.balanceOf(contract.target);
+  const fee = config.currentFee;
+  
+  console.log("Contract LINK balance:", ethers.formatEther(balance));
+  console.log("Required fee:", ethers.formatEther(fee));
+  
+  if (balance < fee) {
+    throw new Error(`Insufficient LINK tokens. Contract needs at least ${ethers.formatEther(fee)} LINK but has ${ethers.formatEther(balance)} LINK`);
+  }
+  
+  return config;
+};
+
+// Replace the SERVER_URL constant with one that reads from env
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:5000';
+
+// Update uploadToServer to use the full URL
+const uploadToServer = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await fetch(`${SERVER_URL}/api/upload`, {
+      method: 'POST',
+      body: formData,
+      mode: 'cors',
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.details || 'Upload failed');
+    }
+
+    const data = await response.json();
+    return data.cid;
+  } catch (error) {
+    console.error('Error uploading to server:', error);
+    throw new Error('Failed to upload file to IPFS');
+  }
+};
+
+// Add this utility function near the top with other utility functions
+const fetchWithRetry = async (url, retries = 3, delay = 2000) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response;
+    } catch (error) {
+      console.log(`Attempt ${i + 1} failed:`, error);
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+};
+
+// Add this utility function to help with debugging IPFS responses
+const tryParseJustification = async (response, cid, setOutcomes, setResultTimestamp) => {
+  const rawText = await response.text();
+  console.log('Raw IPFS response:', {
+    cid,
+    contentType: response.headers.get('content-type'),
+    length: rawText.length,
+    preview: rawText.slice(0, 200)
+  });
+
+  try {
+    // Try to parse as JSON first
+    const data = JSON.parse(rawText);
+    console.log('Parsed JSON data:', data);
+    
+    // If we have a justification field, use it
+    if (data.justification) {
+      // Also set the outcomes if they exist
+      if (data.aggregatedScore) {
+        setOutcomes(data.aggregatedScore);
+      }
+      // Also set the timestamp if it exists
+      if (data.timestamp) {
+        setResultTimestamp(data.timestamp);
+      }
+      return data.justification;
+    }
+    
+    // Fallback to stringifying the whole response if no justification field
+    return JSON.stringify(data, null, 2);
+  } catch (parseError) {
+    console.log('Not valid JSON, using as plain text');
+    return rawText;
+  }
+};
 
 function App() {
   // Navigation state
@@ -98,13 +198,16 @@ function App() {
 
   const [isConnected, setIsConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
-  const [contractAddress, setContractAddress] = useState(CONTRACT_ADDRESSES[0] || '0xbBFBBAc5E1754a89616542540d09ec5172B504B6');
+  const [contractAddress, setContractAddress] = useState(CONTRACT_ADDRESSES[0] || '0x2E67c4D565C55E31514eDd68E42bFBb50a2C49F1');
 
   // Add new state for transaction status
   const [transactionStatus, setTransactionStatus] = useState('');
 
   // Add new state for timestamp
   const [resultTimestamp, setResultTimestamp] = useState('');
+
+  // Add new state for upload progress
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const connectWallet = async () => {
     try {
@@ -624,6 +727,254 @@ function App() {
     );
   };
 
+  const handleRunQuery = async () => {
+    if (!isConnected) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    setLoadingResults(true);
+    setTransactionStatus('Preparing transaction...');
+
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
+
+      // Check funding before sending transaction
+      setTransactionStatus('Checking contract funding...');
+      const fundingStatus = await checkContractFunding(contract, provider);
+      console.log("Funding status:", fundingStatus);
+
+      switch (selectedMethod) {
+        case 'config': {
+          // TODO: Implement packaging current config into zip and uploading to IPFS
+          break;
+        }
+        case 'file': {
+          setTransactionStatus('Uploading file to IPFS...');
+          setUploadProgress(0);
+          
+          const ipfsCid = await uploadToServer(queryPackageFile);
+          console.log('File uploaded to IPFS with CID:', ipfsCid);
+          
+          setTransactionStatus('Sending transaction...');
+          const tx = await contract.requestAIEvaluation([ipfsCid], {
+            gasLimit: 1000000,
+            value: 0
+          });
+          
+          console.log("Transaction sent:", tx);
+          setTransactionStatus('Waiting for confirmation...');
+          
+          const receipt = await tx.wait();
+          console.log("Transaction confirmed:", receipt);
+
+          // Extract requestId from events
+          let requestId;
+          console.log("Processing logs:", receipt.logs);
+
+          for (const log of receipt.logs) {
+            try {
+              const parsedLog = contract.interface.parseLog({
+                topics: log.topics,
+                data: log.data
+              });
+              
+              console.log("Successfully parsed log:", {
+                name: parsedLog.name,
+                args: parsedLog.args
+              });
+
+              if (parsedLog.name === 'RequestAIEvaluation') {
+                requestId = parsedLog.args.requestId;
+                console.log("Found requestId:", requestId);
+                break;
+              }
+            } catch (e) {
+              // Skip logs that aren't from our contract
+              continue;
+            }
+          }
+
+          if (!requestId) {
+            console.log("All logs processed, but no RequestAIEvaluation event found");
+            throw new Error('Request ID not found in transaction logs');
+          }
+
+          // Poll for results
+          setTransactionStatus('Waiting for evaluation results...');
+          let evaluation;
+          let pollCount = 0;
+          const maxPolls = 30;
+
+          while (!evaluation && pollCount < maxPolls) {
+            try {
+              console.log(`Polling attempt ${pollCount + 1}/${maxPolls}...`);
+              const result = await contract.getEvaluation(requestId);
+              if (result.exists) {
+                evaluation = result;
+                break;
+              } else {
+                console.log("Evaluation not ready yet");
+              }
+            } catch (err) {
+              console.error("Polling error:", err);
+            }
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            pollCount++;
+          }
+
+          if (!evaluation) {
+            throw new Error('Evaluation results not received in time');
+          }
+
+          // Process results
+          console.log("Processing final results...");
+          setOutcomes(evaluation.likelihoods.map(num => Number(num)));
+          setJustification("Loading justification..."); // Temporary text while fetching
+          setResultCid(evaluation.justificationCID);
+
+          // Fetch justification content
+          try {
+            console.log(`Fetching justification from IPFS CID: ${evaluation.justificationCID}`);
+            const response = await fetchWithRetry(`https://ipfs.io/ipfs/${evaluation.justificationCID}`);
+            
+            const justificationText = await tryParseJustification(
+              response, 
+              evaluation.justificationCID,
+              setOutcomes,
+              setResultTimestamp
+            );
+            setJustification(justificationText);
+          } catch (error) {
+            console.error('Error fetching justification:', error);
+            setJustification(`Error loading justification: ${error.message}`);
+          }
+
+          setCurrentPage(PAGES.RESULTS);
+          break;
+        }
+        case 'ipfs': {
+          console.log("Starting IPFS CID evaluation...");
+          
+          // Ensure the contract is using the correct address
+          const tx = await contract.requestAIEvaluation([queryPackageCid], {
+            gasLimit: 1000000,
+            value: 0
+          });
+          
+          console.log("Transaction sent:", tx);
+          setTransactionStatus('Waiting for confirmation...');
+          
+          const receipt = await tx.wait();
+          console.log("Transaction confirmed:", receipt);
+
+          // Extract requestId from events
+          let requestId;
+          console.log("Processing logs:", receipt.logs);
+
+          for (const log of receipt.logs) {
+            try {
+              const parsedLog = contract.interface.parseLog({
+                topics: log.topics,
+                data: log.data
+              });
+              
+              console.log("Successfully parsed log:", {
+                name: parsedLog.name,
+                args: parsedLog.args
+              });
+
+              if (parsedLog.name === 'RequestAIEvaluation') {
+                requestId = parsedLog.args.requestId;
+                console.log("Found requestId:", requestId);
+                break;
+              }
+            } catch (e) {
+              // Skip logs that aren't from our contract
+              continue;
+            }
+          }
+
+          if (!requestId) {
+            console.log("All logs processed, but no RequestAIEvaluation event found");
+            throw new Error('Request ID not found in transaction logs');
+          }
+
+          // Poll for results
+          setTransactionStatus('Waiting for evaluation results...');
+          let evaluation;
+          let pollCount = 0;
+          const maxPolls = 30;
+
+          while (!evaluation && pollCount < maxPolls) {
+            try {
+              console.log(`Polling attempt ${pollCount + 1}/${maxPolls}...`);
+              const result = await contract.getEvaluation(requestId);
+              if (result.exists) {
+                evaluation = result;
+                break;
+              } else {
+                console.log("Evaluation not ready yet");
+              }
+            } catch (err) {
+              console.error("Polling error:", err);
+            }
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            pollCount++;
+          }
+
+          if (!evaluation) {
+            throw new Error('Evaluation results not received in time');
+          }
+
+          // Process results
+          console.log("Processing final results...");
+          setOutcomes(evaluation.likelihoods.map(num => Number(num)));
+          setJustification("Loading justification..."); // Temporary text while fetching
+          setResultCid(evaluation.justificationCID);
+
+          // Fetch justification content
+          try {
+            console.log(`Fetching justification from IPFS CID: ${evaluation.justificationCID}`);
+            const response = await fetchWithRetry(`https://ipfs.io/ipfs/${evaluation.justificationCID}`);
+            
+            const justificationText = await tryParseJustification(
+              response, 
+              evaluation.justificationCID,
+              setOutcomes,
+              setResultTimestamp
+            );
+            setJustification(justificationText);
+          } catch (error) {
+            console.error('Error fetching justification:', error);
+            setJustification(`Error loading justification: ${error.message}`);
+          }
+
+          setCurrentPage(PAGES.RESULTS);
+          break;
+        }
+        default:
+          throw new Error('Invalid method selected');
+      }
+    } catch (error) {
+      console.error('Error running query:', error);
+      // Make the error message more user-friendly
+      if (error.message.includes('Insufficient LINK tokens')) {
+        setTransactionStatus('Error: Contract needs more LINK tokens to process requests');
+        alert('The contract needs more LINK tokens to process requests. Please contact the contract administrator.');
+      } else {
+        setTransactionStatus('Error: ' + error.message);
+        alert('An error occurred while processing the query. Check console for details.');
+      }
+    } finally {
+      setLoadingResults(false);
+      setTransactionStatus('');
+      setUploadProgress(0);
+    }
+  };
+
   const renderRun = () => {
     const handleMethodChange = (method) => {
       setSelectedMethod(method);
@@ -636,296 +987,6 @@ function App() {
       } else {
         // TODO: Show error message about invalid file type
         alert('Please upload a ZIP file');
-      }
-    };
-
-    const handleRunQuery = async () => {
-      if (!isConnected) {
-        alert('Please connect your wallet first');
-        return;
-      }
-
-      setLoadingResults(true);
-      setTransactionStatus('Preparing transaction...');
-
-      try {
-        switch (selectedMethod) {
-          case 'config':
-            // Use current configuration
-            // TODO: Implement packaging current config into zip and uploading to IPFS
-            break;
-          case 'file':
-            // Use uploaded zip file
-            // TODO: Implement uploading zip to IPFS
-            break;
-          case 'ipfs': {
-            console.log("Starting IPFS CID evaluation...");
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            const signer = await provider.getSigner();
-            const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
-
-            // Get contract config for logging
-            const config = await contract.getContractConfig();
-            console.log("Contract config:", {
-              oracleAddr: config.oracleAddr,
-              linkAddr: config.linkAddr,
-              jobid: config.jobid,
-              currentFee: ethers.formatEther(config.currentFee)
-            });
-
-            // Send transaction
-            setTransactionStatus('Sending transaction...');
-            const tx = await contract.requestAIEvaluation([queryPackageCid], {
-              gasLimit: 1000000,
-              value: 0
-            });
-            console.log("Transaction sent:", tx);
-
-            // Wait for transaction confirmation
-            setTransactionStatus('Waiting for transaction confirmation...');
-            const receipt = await tx.wait();
-            console.log("Transaction confirmed:", receipt);
-
-            // Extract requestId from events
-            let requestId;
-            console.log("Processing logs:", receipt.logs);
-
-            for (const log of receipt.logs) {
-              try {
-                const parsedLog = contract.interface.parseLog({
-                  topics: log.topics,
-                  data: log.data
-                });
-                
-                console.log("Successfully parsed log:", {
-                  name: parsedLog.name,
-                  args: parsedLog.args
-                });
-
-                if (parsedLog.name === 'RequestAIEvaluation') {
-                  requestId = parsedLog.args.requestId;
-                  console.log("Found requestId:", requestId);
-                  break;
-                }
-                
-                // Log other interesting events
-                if (parsedLog.name === 'Debug1') {
-                  console.log("Debug1 event:", {
-                    linkToken: parsedLog.args[0],
-                    oracle: parsedLog.args[1],
-                    fee: ethers.formatEther(parsedLog.args[2]),
-                    balance: ethers.formatEther(parsedLog.args[3]),
-                    jobId: parsedLog.args[4]
-                  });
-                }
-                
-                if (parsedLog.name === 'ChainlinkRequested') {
-                  console.log("ChainlinkRequested event:", {
-                    id: parsedLog.args[0]
-                  });
-                }
-              } catch (e) {
-                // Skip logs that aren't from our contract
-                continue;
-              }
-            }
-
-            if (!requestId) {
-              console.log("All logs processed, but no RequestAIEvaluation event found");
-              throw new Error('Request ID not found in transaction logs');
-            }
-
-            // Poll for results
-            setTransactionStatus('Waiting for evaluation results...');
-            let evaluation;
-            let pollCount = 0;
-            const maxPolls = 30;
-            
-            while (!evaluation && pollCount < maxPolls) {
-              try {
-                console.log(`Polling attempt ${pollCount + 1}/${maxPolls}...`);
-                
-                // Check LINK balance
-                const linkToken = new ethers.Contract(
-                  config.linkAddr,
-                  ['function balanceOf(address) view returns (uint256)'],
-                  provider
-                );
-                const balance = await linkToken.balanceOf(contractAddress);
-                console.log("Contract LINK balance:", ethers.formatEther(balance));
-                
-                // Check for any recent events
-                const latestBlock = await provider.getBlockNumber();
-                console.log("Current block:", latestBlock);
-                
-                // Look for events in last 30 blocks
-                const startBlock = Math.max(0, latestBlock - 30);
-                
-                // Check for FulfillAIEvaluation events
-                const evaluationEvents = await contract.queryFilter('FulfillAIEvaluation', startBlock, latestBlock);
-                if (evaluationEvents.length > 0) {
-                  console.log("Found FulfillAIEvaluation events:", evaluationEvents);
-                  
-                  // Find the event for our requestId
-                  const ourEvent = evaluationEvents.find(event => {
-                    const parsedLog = contract.interface.parseLog({
-                      topics: event.topics,
-                      data: event.data
-                    });
-                    return parsedLog.args.requestId === requestId;
-                  });
-
-                  if (ourEvent) {
-                    console.log("Found our fulfillment event:", ourEvent);
-                    const parsedLog = contract.interface.parseLog({
-                      topics: ourEvent.topics,
-                      data: ourEvent.data
-                    });
-                    
-                    // Create evaluation object from event data
-                    evaluation = {
-                      exists: true,
-                      likelihoods: parsedLog.args.likelihoods,
-                      justificationCID: parsedLog.args.justificationCID
-                    };
-                    console.log("Created evaluation from event:", evaluation);
-                    break;
-                  }
-                }
-                
-                // If no event found, check contract state
-                const result = await contract.getEvaluation(requestId);
-                console.log("Poll result from contract:", {
-                  exists: result.exists,
-                  likelihoods: result.exists ? result.likelihoods.map(n => n.toString()) : [],
-                  justificationCID: result.justificationCID,
-                  requestId: requestId
-                });
-                
-                if (result.exists) {
-                  console.log("Evaluation exists in contract state");
-                  evaluation = result;
-                  break;
-                } else {
-                  console.log("Evaluation not ready yet");
-                  
-                  // Check if request is still pending at oracle
-                  try {
-                    const oracleContract = new ethers.Contract(
-                      config.oracleAddr,
-                      ['function pendingRequests(bytes32) view returns (bool)'],
-                      provider
-                    );
-                    const isPending = await oracleContract.pendingRequests(requestId);
-                    console.log("Request pending at oracle:", isPending);
-                  } catch (err) {
-                    console.log("Could not check oracle status:", err.message);
-                  }
-                }
-              } catch (err) {
-                console.error("Polling error:", err);
-                console.log("Error details:", {
-                  message: err.message,
-                  code: err.code,
-                  data: err.data
-                });
-              }
-              await new Promise(resolve => setTimeout(resolve, 5000));
-              pollCount++;
-            }
-
-            if (!evaluation) {
-              throw new Error(`Evaluation not received after ${maxPolls} attempts`);
-            }
-
-            // Update results
-            console.log("Processing final results...");
-            setOutcomes(evaluation.likelihoods.map(num => Number(num)));
-            setJustification("Loading justification..."); // Temporary text while fetching
-            setResultCid(evaluation.justificationCID);
-
-            // Fetch justification content
-            try {
-              let response;
-              let succeeded = false;
-              
-              for (const gateway of IPFS_GATEWAYS) {
-                try {
-                  const url = `${gateway}${evaluation.justificationCID}`;
-                  console.log("Trying gateway:", url);
-                  
-                  response = await fetch(url);
-                  if (response.ok) {
-                    succeeded = true;
-                    break;
-                  }
-                } catch (e) {
-                  console.log("Gateway failed:", e);
-                  continue;
-                }
-              }
-              
-              if (!succeeded) {
-                throw new Error('All IPFS gateways failed');
-              }
-
-              const data = await response.json();
-              console.log("Fetched data:", data);
-
-              if (data.justification && data.timestamp) {
-                setJustification(data.justification);
-                setResultTimestamp(data.timestamp);
-              } else {
-                throw new Error('Invalid justification data format');
-              }
-            } catch (error) {
-              console.error('Error fetching justification:', error);
-              
-              // Create a more user-friendly error message with direct link
-              setJustification(
-                <div>
-                  Unable to load justification directly. 
-                  <br/><br/>
-                  View result at:
-                  <ul style={{marginTop: '0.5rem'}}>
-                    {IPFS_GATEWAYS.map((gateway, index) => (
-                      <li key={index} style={{marginBottom: '0.5rem'}}>
-                        <a 
-                          href={`${gateway}${evaluation.justificationCID}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{color: 'var(--color-primary-purple)'}}
-                        >
-                          {gateway}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            }
-            
-            console.log("Final outcomes:", evaluation.likelihoods);
-            console.log("Final justification CID:", evaluation.justificationCID);
-            
-            // Navigate to results page
-            setCurrentPage(PAGES.RESULTS);
-            break;
-          }
-          default:
-            throw new Error('Invalid method selected');
-        }
-        
-        // For now, just simulate processing
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        setCurrentPage(PAGES.RESULTS);
-      } catch (error) {
-        console.error('Error running query:', error);
-        setTransactionStatus('Error: ' + error.message);
-        alert('An error occurred while processing the query. Check console for details.');
-      } finally {
-        setLoadingResults(false);
-        setTransactionStatus('');
       }
     };
 
@@ -986,7 +1047,18 @@ function App() {
                   className="file-input"
                 />
                 {queryPackageFile && (
-                  <p className="file-name">Selected: {queryPackageFile.name}</p>
+                  <div className="file-info">
+                    <p className="file-name">Selected: {queryPackageFile.name}</p>
+                    {uploadProgress > 0 && uploadProgress < 100 && (
+                      <div className="upload-progress">
+                        <div 
+                          className="progress-bar"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                        <span className="progress-text">{uploadProgress}%</span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}

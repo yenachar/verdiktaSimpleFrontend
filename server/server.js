@@ -8,6 +8,7 @@ require('dotenv').config();
 const app = express();
 const ipfsClient = require('./services/ipfsClient'); 
 
+// Apply CORS middleware before defining routes
 app.use(cors());
 app.use(express.json());
 
@@ -88,12 +89,37 @@ app.get('/test', (req, res) => {
   res.json({ message: 'Server is running' });
 });
 
+app.get('/test-cors', (req, res) => {
+  res.json({ message: 'CORS is working' });
+});
+
+// Load environment variables from .env file
+require('dotenv').config();
+
+// Validate required environment variables
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+if (!process.env.PORT) {
+  console.warn('Warning: PORT not set in environment, using default: 5000');
+}
+
+// Add error handling for the server
+const server = app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
   console.log('Environment variables loaded:', {
+    PORT: PORT,
     IPFS_PINNING_SERVICE: process.env.IPFS_PINNING_SERVICE ? 'Set' : 'Not set',
     IPFS_PINNING_KEY: process.env.IPFS_PINNING_KEY ? 'Set' : 'Not set'
   });
+}).on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    const newPort = PORT + 1;
+    console.log(`Port ${PORT} is busy, trying ${newPort}`);
+    server.close();
+    app.listen(newPort, () => {
+      console.log(`Server now listening on port ${newPort}`);
+    });
+  } else {
+    console.error('Server error:', err);
+  }
 });
 
