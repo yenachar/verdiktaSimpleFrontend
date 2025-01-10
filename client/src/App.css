@@ -1097,15 +1097,25 @@ button.large {
 }
 
 .jury-node-summary {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
   align-items: center;
   padding: 0.75rem;
   background: var(--color-light-bg);
   border-radius: 4px;
   font-size: 0.9rem;
+  gap: 1rem;
 }
 
 .jury-node-summary span {
   color: var(--color-text-dark);
+}
+
+.jury-node-summary span:first-child {
+  font-weight: 500;
+}
+
+.jury-node-summary span:nth-child(2),
+.jury-node-summary span:last-child {
+  text-align: right;
 }
