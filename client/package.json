@@ -10,6 +10,7 @@
     "chart.js": "^4.4.7",
     "cors": "^2.8.5",
     "ethers": "^6.13.4",
+    "jszip": "^3.10.1",
     "react": "^18.3.1",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.3.1",

@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 require('dotenv').config();
+const fetch = require('node-fetch');
 
 const app = express();
 const ipfsClient = require('./services/ipfsClient'); 
@@ -91,6 +92,55 @@ app.get('/test', (req, res) => {
 
 app.get('/test-cors', (req, res) => {
   res.json({ message: 'CORS is working' });
+});
+
+// Add this new endpoint to handle IPFS fetching
+app.get('/api/fetch/:cid', async (req, res) => {
+  try {
+    const { cid } = req.params;
+    console.log('Fetching from IPFS:', cid);
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+    const response = await fetch(`https://ipfs.io/ipfs/${cid}`, {
+      signal: controller.signal,
+      timeout: 30000
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error(`IPFS fetch failed with status: ${response.status}`);
+    }
+
+    // Get the response data as a buffer
+    const data = await response.buffer();
+    
+    // Forward the content type and length
+    res.set({
+      'Content-Type': response.headers.get('content-type'),
+      'Content-Length': response.headers.get('content-length'),
+      'Access-Control-Allow-Origin': '*'
+    });
+    
+    // Send the data
+    res.send(data);
+
+  } catch (error) {
+    console.error('Error fetching from IPFS:', error);
+    if (error.name === 'AbortError') {
+      res.status(504).json({
+        error: 'Request timeout',
+        details: 'IPFS fetch timed out after 30 seconds'
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to fetch from IPFS',
+        details: error.message
+      });
+    }
+  }
 });
 
 // Load environment variables from .env file

@@ -1,11 +1,13 @@
 // src/App.js
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Chart, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import './App.css';
 import { ethers } from 'ethers';
 import FormData from 'form-data';
+import archiveService from './utils/archiveService';
+import manifestParser from './utils/manifestParser';
 
 // Register Chart.js components
 Chart.register(CategoryScale, LinearScale, BarElement);
@@ -281,15 +283,15 @@ const uploadToServer = async (file) => {
 
 // Add this utility function near the top with other utility functions
 const fetchWithRetry = async (url, retries = 3, delay = 2000) => {
+  const cid = url.split('/ipfs/')[1];
   for (let i = 0; i < retries; i++) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(`${SERVER_URL}/api/fetch/${cid}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       return response;
     } catch (error) {
-      console.log(`Attempt ${i + 1} failed:`, error);
       if (i === retries - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
@@ -329,6 +331,64 @@ const tryParseJustification = async (response, cid, setOutcomes, setResultTimest
   } catch (parseError) {
     console.log('Not valid JSON, using as plain text');
     return rawText;
+  }
+};
+
+// Update the fetchQueryPackageDetails function
+const fetchQueryPackageDetails = async (cid) => {
+  try {
+    console.log('Fetching query package:', cid);
+    const response = await fetch(`${SERVER_URL}/api/fetch/${cid}`);
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.details || `Failed to fetch query package: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    console.log('Received blob:', {
+      size: blob.size,
+      type: blob.type
+    });
+
+    const archiveFile = new File([blob], 'query_package.zip', { type: 'application/zip' });
+    
+    // Extract the archive
+    console.log('Extracting archive...');
+    const files = await archiveService.extractArchive(archiveFile);
+    console.log('Extracted files:', files.map(f => f.name));
+    
+    // Find and parse the manifest
+    const manifestFile = files.find(file => file.name === 'manifest.json');
+    if (!manifestFile) {
+      throw new Error('No manifest.json found in archive');
+    }
+
+    const manifestContent = await manifestFile.text();
+    const manifest = JSON.parse(manifestContent);
+    console.log('Parsed manifest:', manifest);
+
+    // Find and parse the primary query file
+    const primaryFile = files.find(file => file.name === manifest.primary.filename);
+    if (!primaryFile) {
+      throw new Error('Primary file not found in archive');
+    }
+
+    const primaryContent = await primaryFile.text();
+    const primaryData = JSON.parse(primaryContent);
+    console.log('Parsed primary data:', primaryData);
+
+    return {
+      query: primaryData.query || '',
+      numOutcomes: manifest.juryParameters?.NUMBER_OF_OUTCOMES || 2,
+      iterations: manifest.juryParameters?.ITERATIONS || 1,
+      juryNodes: manifest.juryParameters?.AI_NODES || [],
+      additionalFiles: manifest.additional || [],
+      supportFiles: manifest.support || []
+    };
+  } catch (error) {
+    console.error('Error fetching query package details:', error);
+    throw error;
   }
 };
 
@@ -391,6 +451,27 @@ function App() {
 
   // Add new state for upload progress
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // Add package details state at the component level
+  const [packageDetails, setPackageDetails] = useState(null);
+
+  // Add effect to fetch package details when currentCid changes
+  useEffect(() => {
+    if (currentCid) {
+      console.log('Fetching package details for CID:', currentCid);
+      setTransactionStatus('Loading query package details...');
+      fetchQueryPackageDetails(currentCid)
+        .then(details => {
+          console.log('Fetched package details:', details);
+          setPackageDetails(details);
+          setTransactionStatus('');
+        })
+        .catch(error => {
+          console.error('Failed to load query package:', error);
+          setTransactionStatus('Failed to load query package details');
+        });
+    }
+  }, [currentCid]);
 
   const connectWallet = async () => {
     try {
@@ -691,7 +772,7 @@ function App() {
     // AI Provider options and their corresponding models
     const providerModels = {
       OpenAI: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4o'],
-      Anthropic: ['claude-2.1', 'claude-3-sonnet', 'claude-3.5-sonnet'],
+      Anthropic: ['claude-2.1', 'claude-3-sonnet-20240229', 'claude-3-5-sonnet-20241022'],
       'Open-source': ['llava', 'llama-3.1', 'llama-3.2', 'phi3']
     };
 
@@ -911,7 +992,8 @@ function App() {
   };
 
   const handleRunQuery = async () => {
-    if (!isConnected) {
+    // Only check wallet connection for blockchain operations
+    if (selectedMethod !== 'config' && !isConnected) {
       alert('Please connect your wallet first');
       return;
     }
@@ -920,30 +1002,185 @@ function App() {
     setTransactionStatus('Preparing transaction...');
 
     try {
+      // Initialize provider and contract first
       let provider = new ethers.BrowserProvider(window.ethereum);
-      
-      // Switch to Base Sepolia if needed and get the updated provider
       provider = await switchToBaseSepolia(provider);
-      
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
 
-      // Check funding before sending transaction
+      // Check funding before proceeding
       setTransactionStatus('Checking contract funding...');
       const fundingStatus = await checkContractFunding(contract, provider);
       console.log("Funding status:", fundingStatus);
 
-      switch (selectedMethod) {
-        case 'config': {
-          // TODO: Implement packaging current config into zip and uploading to IPFS
-          break;
+      if (selectedMethod === 'config') {
+        // Create manifest with only required fields
+        const manifest = {
+          version: "1.0",
+          primary: {
+            filename: "primary_query.json"
+          },
+          juryParameters: {
+            NUMBER_OF_OUTCOMES: numOutcomes,
+            AI_NODES: juryNodes.map(node => ({
+              AI_MODEL: node.model,
+              AI_PROVIDER: node.provider,
+              NO_COUNTS: node.runs,
+              WEIGHT: node.weight
+            })),
+            ITERATIONS: iterations
+          }
+        };
+
+        // Create references for supporting files
+        const fileReferences = supportingFiles.map((file, index) => ({
+          name: `supportingFile${index + 1}`,
+          originalName: file.file.name
+        }));
+
+        // Create query file content as JSON with proper references
+        const queryFileContent = {
+          query: queryText,
+          references: fileReferences.map(ref => ref.name)
+        };
+
+        // Create the JSON file
+        const queryFile = new File(
+          [JSON.stringify(queryFileContent, null, 2)],
+          'primary_query.json',
+          { type: 'application/json' }
+        );
+
+        // Initialize files array with primary file
+        const files = [queryFile];
+        
+        // Only add additional section to manifest if there are supporting files
+        if (supportingFiles.length > 0) {
+          manifest.additional = supportingFiles.map((file, index) => ({
+            name: fileReferences[index].name,
+            type: file.file.type,
+            filename: file.file.name,
+            description: file.description || ''
+          }));
+          // Add supporting files to the archive
+          files.push(...supportingFiles.map(f => f.file));
         }
+
+        // Only add support section if there are external references
+        if (ipfsCids.length > 0) {
+          manifest.support = ipfsCids.map(cid => ({
+            hash: cid
+          }));
+        }
+
+        // Create the archive
+        console.log('Creating archive with manifest:', manifest);
+        console.log('Primary query file content:', queryFileContent);
+        const archiveBlob = await archiveService.createArchive(files, manifest);
+
+        // Create a File object from the Blob for upload
+        const archiveFile = new File([archiveBlob], 'query_package.zip', {
+          type: 'application/zip'
+        });
+
+        // Upload to IPFS through the server
+        setTransactionStatus('Uploading to IPFS...');
+        const ipfsCid = await uploadToServer(archiveFile);
+        console.log('Archive uploaded to IPFS with CID:', ipfsCid);
+        setCurrentCid(ipfsCid);
+
+        // Submit to blockchain
+        setTransactionStatus('Submitting to blockchain...');
+        const tx = await contract.requestAIEvaluation([ipfsCid], {
+          gasLimit: 1000000,
+          value: 0
+        });
+        
+        console.log("Transaction sent:", tx);
+        setTransactionStatus('Waiting for confirmation...');
+        
+        const receipt = await tx.wait();
+        console.log("Transaction confirmed:", receipt);
+
+        // Extract requestId from events
+        let requestId;
+        for (const log of receipt.logs) {
+          try {
+            const parsedLog = contract.interface.parseLog({
+              topics: log.topics,
+              data: log.data
+            });
+            
+            if (parsedLog.name === 'RequestAIEvaluation') {
+              requestId = parsedLog.args.requestId;
+              console.log("Found requestId:", requestId);
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+
+        if (!requestId) {
+          throw new Error('Request ID not found in transaction logs');
+        }
+
+        // Poll for results
+        setTransactionStatus('Waiting for evaluation results...');
+        let evaluation;
+        let pollCount = 0;
+        const maxPolls = 30;
+
+        while (!evaluation && pollCount < maxPolls) {
+          try {
+            const result = await contract.getEvaluation(requestId);
+            if (result.exists) {
+              evaluation = result;
+              break;
+            }
+          } catch (err) {
+            console.error("Polling error:", err);
+          }
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          pollCount++;
+        }
+
+        if (!evaluation) {
+          throw new Error('Evaluation results not received in time');
+        }
+
+        // Process results
+        setOutcomes(evaluation.likelihoods.map(num => Number(num)));
+        setJustification("Loading justification...");
+        setResultCid(evaluation.justificationCID);
+
+        // Fetch justification content
+        try {
+          const response = await fetchWithRetry(`https://ipfs.io/ipfs/${evaluation.justificationCID}`);
+          const justificationText = await tryParseJustification(
+            response, 
+            evaluation.justificationCID,
+            setOutcomes,
+            setResultTimestamp
+          );
+          setJustification(justificationText);
+        } catch (error) {
+          console.error('Error fetching justification:', error);
+          setJustification(`Error loading justification: ${error.message}`);
+        }
+
+        setCurrentPage(PAGES.RESULTS);
+        return;
+      }
+
+      switch (selectedMethod) {
         case 'file': {
           setTransactionStatus('Uploading file to IPFS...');
           setUploadProgress(0);
           
           const ipfsCid = await uploadToServer(queryPackageFile);
-          console.log('File uploaded to IPFS with CID:', ipfsCid);
+          console.log('Package uploaded to IPFS with CID:', ipfsCid);
+          setCurrentCid(ipfsCid);
           
           setTransactionStatus('Sending transaction...');
           const tx = await contract.requestAIEvaluation([ipfsCid], {
@@ -1043,9 +1280,10 @@ function App() {
           break;
         }
         case 'ipfs': {
-          console.log("Starting IPFS CID evaluation...");
+          // Set the currentCid to the user-provided CID
+          setCurrentCid(queryPackageCid);
           
-          // Ensure the contract is using the correct address
+          setTransactionStatus('Sending transaction...');
           const tx = await contract.requestAIEvaluation([queryPackageCid], {
             gasLimit: 1000000,
             value: 0
@@ -1352,20 +1590,41 @@ function App() {
       <div className="page results">
         <h2>Results</h2>
 
-        {/* Configuration Summary Section */}
+        {/* Update Configuration Summary Section */}
         <section className="configuration-summary">
           <h3>Query Configuration</h3>
           <div className="summary-details">
             <div className="query-text">
               <label>Query:</label>
-              <div className="query-value">{queryText}</div>
+              <div className="query-value">
+                {packageDetails ? packageDetails.query : queryText}
+              </div>
             </div>
             <div className="config-stats">
-              <span>Outcomes: {numOutcomes}</span>
-              <span>Iterations: {iterations}</span>
-              <span>Jury Members: {juryNodes.length}</span>
-              <span>Supporting Files: {supportingFiles.length + ipfsCids.length}</span>
+              <span>Outcomes: {packageDetails ? packageDetails.numOutcomes : numOutcomes}</span>
+              <span>Iterations: {packageDetails ? packageDetails.iterations : iterations}</span>
+              <span>Jury Members: {packageDetails ? packageDetails.juryNodes.length : juryNodes.length}</span>
+              <span>Supporting Files: {packageDetails ? 
+                (packageDetails.additionalFiles.length + packageDetails.supportFiles.length) : 
+                (supportingFiles.length + ipfsCids.length)}
+              </span>
             </div>
+            
+            {/* Add Jury Configuration Details */}
+            {packageDetails?.juryNodes && (
+              <div className="jury-details">
+                <h4>AI Jury Configuration</h4>
+                <div className="jury-list">
+                  {packageDetails.juryNodes.map((node, index) => (
+                    <div key={index} className="jury-node-summary">
+                      <span>{node.AI_PROVIDER} - {node.AI_MODEL}</span>
+                      <span>Runs: {node.NO_COUNTS}</span>
+                      <span>Weight: {(node.WEIGHT * 100).toFixed(1)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -1374,13 +1633,34 @@ function App() {
           <section className="results-display">
             <div className="results-header">
               <div className="cid-display">
+                <label>Query Package CID:</label>
+                <div className="cid-value">
+                  <a 
+                    href={`https://ipfs.io/ipfs/${currentCid}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="View Query Package on IPFS"
+                  >
+                    {currentCid}
+                  </a>
+                  <button 
+                    className="copy-button"
+                    onClick={() => navigator.clipboard.writeText(currentCid)}
+                    title="Copy to clipboard"
+                  >
+                    📋
+                  </button>
+                </div>
+              </div>
+
+              <div className="cid-display">
                 <label>Result CID:</label>
                 <div className="cid-value">
                   <a 
                     href={`https://ipfs.io/ipfs/${resultCid}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title="View on IPFS"
+                    title="View Result on IPFS"
                   >
                     {resultCid}
                   </a>
@@ -1393,6 +1673,7 @@ function App() {
                   </button>
                 </div>
               </div>
+
               {resultTimestamp && (
                 <div className="timestamp">
                   <label>Evaluation Time:</label>
