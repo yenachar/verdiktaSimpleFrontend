@@ -45,18 +45,6 @@ const CONTRACT_OPTIONS = CONTRACT_ADDRESSES.map((address, index) => ({
   name: CONTRACT_NAMES[index] || `Contract ${index + 1}`
 }));
 
-// Add this utility function to parse the first CID from a comma-delimited list
-const getFirstCid = (cidOrCids) => {
-  if (!cidOrCids) return '';
-  
-  // If it's a comma-delimited string, take first part
-  if (typeof cidOrCids === 'string' && cidOrCids.includes(',')) {
-    return cidOrCids.split(',')[0].trim();
-  }
-  
-  // Otherwise return as is
-  return cidOrCids;
-};
 
 // Add this constant near the top with other constants
 const BASE_SEPOLIA_CHAIN_ID = 84532;
@@ -70,6 +58,19 @@ const BASE_SEPOLIA_PARAMS = {
   },
   rpcUrls: ['https://sepolia.base.org'],
   blockExplorerUrls: ['https://sepolia.basescan.org']
+};
+
+// Add this utility function to parse the first CID from a comma-delimited list
+const getFirstCid = (cidOrCids) => {
+  if (!cidOrCids) return '';
+  
+  // If it's a comma-delimited string, take first part
+  if (typeof cidOrCids === 'string' && cidOrCids.includes(',')) {
+    return cidOrCids.split(',')[0].trim();
+  }
+  
+  // Otherwise return as is
+  return cidOrCids;
 };
 
 // Add this utility function to help with contract debugging
@@ -1142,7 +1143,7 @@ function App() {
         setTransactionStatus('Waiting for evaluation results...');
         let evaluation;
         let pollCount = 0;
-        const maxPolls = 30;
+        const maxPolls = 60;
 
         while (!evaluation && pollCount < maxPolls) {
           try {
@@ -1165,7 +1166,7 @@ function App() {
         // Process results
         setOutcomes(evaluation.likelihoods.map(num => Number(num)));
         setJustification("Loading justification...");
-        setResultCid(evaluation.justificationCID);
+        setResultCid(getFirstCid(evaluation.justificationCID));
 
         // Fetch justification content
         try {
@@ -1243,7 +1244,7 @@ function App() {
           setTransactionStatus('Waiting for evaluation results...');
           let evaluation;
           let pollCount = 0;
-          const maxPolls = 30;
+          const maxPolls = 60;
 
           while (!evaluation && pollCount < maxPolls) {
             try {
@@ -1279,7 +1280,7 @@ function App() {
             
             const justificationText = await tryParseJustification(
               response, 
-              evaluation.justificationCID,
+              getFirstCid(evaluation.justificationCID),
               setOutcomes,
               setResultTimestamp
             );
@@ -1344,13 +1345,25 @@ function App() {
           setTransactionStatus('Waiting for evaluation results...');
           let evaluation;
           let pollCount = 0;
-          const maxPolls = 30;
+          const maxPolls = 60;
 
           while (!evaluation && pollCount < maxPolls) {
             try {
               console.log(`Polling attempt ${pollCount + 1}/${maxPolls}...`);
               const result = await contract.getEvaluation(requestId);
-              if (result.exists) {
+
+    // Log the entire result for debugging
+    console.log("Poll result:", {
+      exists: result.exists,
+      hasLikelihoods: result.likelihoods && result.likelihoods.length > 0,
+      likelihoodsLength: result.likelihoods?.length,
+      likelihoods: result.likelihoods,
+      justificationCIDs: result.justificationCIDs,
+      responseCount: result.responseCount,
+      expectedResponses: result.expectedResponses
+    });
+		    
+              if (result.exists && result.likelihoods && result.likelihoods.length > 0) {
                 evaluation = result;
                 break;
               } else {
