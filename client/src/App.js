@@ -45,6 +45,19 @@ const CONTRACT_OPTIONS = CONTRACT_ADDRESSES.map((address, index) => ({
   name: CONTRACT_NAMES[index] || `Contract ${index + 1}`
 }));
 
+// Add this utility function to parse the first CID from a comma-delimited list
+const getFirstCid = (cidOrCids) => {
+  if (!cidOrCids) return '';
+  
+  // If it's a comma-delimited string, take first part
+  if (typeof cidOrCids === 'string' && cidOrCids.includes(',')) {
+    return cidOrCids.split(',')[0].trim();
+  }
+  
+  // Otherwise return as is
+  return cidOrCids;
+};
+
 // Add this constant near the top with other constants
 const BASE_SEPOLIA_CHAIN_ID = 84532;
 const BASE_SEPOLIA_PARAMS = {
