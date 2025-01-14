@@ -1433,7 +1433,7 @@ function App() {
 
     const handleFileUpload = (event) => {
       const file = event.target.files[0];
-      if (file && file.type === 'application/zip') {
+      if (file && (file.type === 'application/zip' || file.name.endsWith('.zip'))) {
         setQueryPackageFile(file);
       } else {
         // TODO: Show error message about invalid file type
