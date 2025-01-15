@@ -1682,7 +1682,12 @@ function App() {
                   </a>
                   <button 
                     className="copy-button"
-                    onClick={() => navigator.clipboard.writeText(currentCid)}
+                    // onClick={() => navigator.clipboard.writeText(currentCid)}
+		    onClick={() => {
+                      window?.navigator?.clipboard?.writeText?.(currentCid)
+                        ?.then(() => alert('Copied!'))
+                        ?.catch(() => alert('Copy failed'));
+		    }}
                     title="Copy to clipboard"
                   >
                     📋
@@ -1705,7 +1710,12 @@ function App() {
                       </a>
                       <button
                         className="copy-button"
-                        onClick={() => navigator.clipboard.writeText(cid.trim())}
+                        // onClick={() => navigator.clipboard.writeText(cid.trim())}
+			onClick={() => {
+			  window?.navigator?.clipboard?.writeText?.(resultCid)
+                            ?.then(() => alert('Copied!'))
+                            ?.catch(() => alert('Copy failed')); 
+			}}
                         title="Copy to clipboard"
                       >
                         📋
