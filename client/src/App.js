@@ -1690,24 +1690,28 @@ function App() {
                 </div>
               </div>
 
-              <div className="cid-display">
-                <label>Result CID:</label>
-                <div className="cid-value">
-                  <a 
-                    href={`https://ipfs.io/ipfs/${resultCid}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="View Result on IPFS"
-                  >
-                    {resultCid}
-                  </a>
-                  <button 
-                    className="copy-button"
-                    onClick={() => navigator.clipboard.writeText(resultCid)}
-                    title="Copy to clipboard"
-                  >
-                    📋
-                  </button>
+		<div className="cid-display">
+                <label>Result CID{resultCid.includes(',') ? 's' : ''}:</label>
+                <div className="cid-list">
+                  {resultCid.split(',').map((cid, index) => (
+                    <div key={index} className="cid-value">
+                      <a
+                        href={`https://ipfs.io/ipfs/${cid.trim()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="View Result on IPFS"
+                      >
+                        {cid.trim()}
+                      </a>
+                      <button
+                        className="copy-button"
+                        onClick={() => navigator.clipboard.writeText(cid.trim())}
+                        title="Copy to clipboard"
+                      >
+                        📋
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
 

@@ -373,6 +373,12 @@ body {
   color: #495057;
 }
 
+.cid-display .cid-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .cid-value {
   display: flex;
   align-items: center;
