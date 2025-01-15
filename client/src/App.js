@@ -273,6 +273,7 @@ const uploadToServer = async (file) => {
   formData.append('file', file);
 
   try {
+    console.log(`Attempting to connect to server at: ${SERVER_URL}`);
     const response = await fetch(`${SERVER_URL}/api/upload`, {
       method: 'POST',
       body: formData,
@@ -290,8 +291,17 @@ const uploadToServer = async (file) => {
     const data = await response.json();
     return data.cid;
   } catch (error) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('ERR_CONNECTION_REFUSED')) {
+      console.error('Server connection error:', error);
+      throw new Error(
+        'Unable to connect to server. Please ensure:\n' +
+        '1. The server is running (run npm start in server directory)\n' +
+        '2. The server URL is correct in .env (REACT_APP_SERVER_URL)\n' +
+        '3. You can access the server at: ' + SERVER_URL
+      );
+    }
     console.error('Error uploading to server:', error);
-    throw new Error('Failed to upload file to IPFS');
+    throw new Error('Failed to upload file to IPFS: ' + error.message);
   }
 };
 
@@ -1147,6 +1157,7 @@ function App() {
 
         while (!evaluation && pollCount < maxPolls) {
           try {
+            console.log(`Polling attempt ${pollCount + 1}/${maxPolls}...`);
             const result = await contract.getEvaluation(requestId);
             if (result.exists) {
               evaluation = result;
