@@ -772,7 +772,7 @@ function App() {
         <button 
           className="primary"
           onClick={() => setCurrentPage(PAGES.JURY_SELECTION)}
-          disabled={!queryText.trim()}
+          disabled={!queryText || !queryText.trim()}
         >
           Next: Jury Selection
         </button>
