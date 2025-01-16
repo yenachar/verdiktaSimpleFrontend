@@ -8,6 +8,7 @@ import { ethers } from 'ethers';
 import FormData from 'form-data';
 import archiveService from './utils/archiveService';
 import manifestParser from './utils/manifestParser';
+import PaginatedJustification from './components/paginatedJustification';
 
 // Register Chart.js components
 Chart.register(CategoryScale, LinearScale, BarElement);
@@ -60,20 +61,7 @@ const BASE_SEPOLIA_PARAMS = {
   blockExplorerUrls: ['https://sepolia.basescan.org']
 };
 
-// Add this utility function to parse the first CID from a comma-delimited list
-const getFirstCid = (cidOrCids) => {
-  if (!cidOrCids) return '';
-  
-  // If it's a comma-delimited string, take first part
-  if (typeof cidOrCids === 'string' && cidOrCids.includes(',')) {
-    return cidOrCids.split(',')[0].trim();
-  }
-  
-  // Otherwise return as is
-  return cidOrCids;
-};
-
-// Add this utility function to help with contract debugging
+// Utility function to help with contract debugging
 const debugContract = async (contract) => {
   console.log("Debug contract called with:", {
     contractExists: !!contract,
@@ -1159,7 +1147,18 @@ function App() {
           try {
             console.log(`Polling attempt ${pollCount + 1}/${maxPolls}...`);
             const result = await contract.getEvaluation(requestId);
-            if (result.exists) {
+    // Log the entire result for debugging
+    console.log("Poll result (config):", {
+      exists: result.exists,
+      hasLikelihoods: result.likelihoods && result.likelihoods.length > 0,
+      likelihoodsLength: result.likelihoods?.length,
+      likelihoods: result.likelihoods,
+      justificationCID: result.justificationCID,
+      responseCount: result.responseCount,
+      expectedResponses: result.expectedResponses
+    });
+
+            if (result.exists && result.likelihoods && result.likelihoods.length > 0) {
               evaluation = result;
               break;
             }
@@ -1177,7 +1176,7 @@ function App() {
         // Process results
         setOutcomes(evaluation.likelihoods.map(num => Number(num)));
         setJustification("Loading justification...");
-        setResultCid(getFirstCid(evaluation.justificationCID));
+        setResultCid(evaluation.justificationCID);
 
         // Fetch justification content
         try {
@@ -1261,7 +1260,19 @@ function App() {
             try {
               console.log(`Polling attempt ${pollCount + 1}/${maxPolls}...`);
               const result = await contract.getEvaluation(requestId);
-              if (result.exists) {
+
+    // Log the entire result for debugging
+    console.log("Poll result (file):", {
+      exists: result.exists,
+      hasLikelihoods: result.likelihoods && result.likelihoods.length > 0,
+      likelihoodsLength: result.likelihoods?.length,
+      likelihoods: result.likelihoods,
+      justificationCID: result.justificationCID,
+      responseCount: result.responseCount,
+      expectedResponses: result.expectedResponses
+    });
+
+              if (result.exists && result.likelihoods && result.likelihoods.length > 0) {
                 evaluation = result;
                 break;
               } else {
@@ -1291,7 +1302,7 @@ function App() {
             
             const justificationText = await tryParseJustification(
               response, 
-              getFirstCid(evaluation.justificationCID),
+              evaluation.justificationCID,
               setOutcomes,
               setResultTimestamp
             );
@@ -1364,12 +1375,12 @@ function App() {
               const result = await contract.getEvaluation(requestId);
 
     // Log the entire result for debugging
-    console.log("Poll result:", {
+    console.log("Poll result (ipfs):", {
       exists: result.exists,
       hasLikelihoods: result.likelihoods && result.likelihoods.length > 0,
       likelihoodsLength: result.likelihoods?.length,
       likelihoods: result.likelihoods,
-      justificationCIDs: result.justificationCIDs,
+      justificationCID: result.justificationCID,
       responseCount: result.responseCount,
       expectedResponses: result.expectedResponses
     });
@@ -1749,8 +1760,14 @@ function App() {
             {/* Justification */}
             <div className="justification">
               <h3>AI Jury Justification</h3>
-              <div className="justification-text">
-                {justification}
+              <div className="justification-content">
+                <PaginatedJustification
+                  resultCid={resultCid}
+                  fetchWithRetry={fetchWithRetry}
+                  tryParseJustification={tryParseJustification}
+                  setOutcomes={setOutcomes}
+                  setResultTimestamp={setResultTimestamp}
+                />
               </div>
             </div>
           </section>
