@@ -1125,3 +1125,31 @@ button.large {
 .jury-node-summary span:last-child {
   text-align: right;
 }
+
+.cid-input-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.cid-input-group input {
+  flex: 1;
+}
+
+.cid-entry {
+  display: grid;
+  grid-template-columns: 150px 1fr 200px 40px;
+  gap: 1rem;
+  align-items: center;
+}
+
+.cid-name {
+  font-weight: 500;
+  color: var(--color-primary-purple);
+}
+
+.cid-value {
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

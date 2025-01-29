@@ -413,6 +413,7 @@ function App() {
   const [numOutcomes, setNumOutcomes] = useState(2);
   const [supportingFiles, setSupportingFiles] = useState([]);
   const [ipfsCids, setIpfsCids] = useState([]);
+  const [cidInput, setCidInput] = useState('');
   
   // Jury Selection state
   const [iterations, setIterations] = useState(1);
@@ -699,40 +700,31 @@ function App() {
               ⓘ
               {activeTooltipId === 'ipfs' && (
                 <div className="tooltip-content">
-                  Enter Content IDs (CIDs) from the InterPlanetary File System (IPFS) to include external data in your query. This allows you to reference data stored on the decentralized web.
+                  Enter Content IDs (CIDs) from IPFS to include external data in your query.
                 </div>
               )}
             </div>
           </div>
-          <div className="cid-input">
+          <div className="cid-input-group">
             <input
               type="text"
-              placeholder="Enter IPFS CID"
-              value={currentCid || ''}
-              onChange={(e) => setCurrentCid(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && e.target.value.trim()) {
-                  setIpfsCids(prev => [...prev, {
-                    cid: currentCid.trim(),
-                    description: '',
-                    id: Date.now() + Math.random()
-                  }]);
-                  setCurrentCid('');
-                }
-              }}
+              value={cidInput}
+              onChange={(e) => setCidInput(e.target.value)}
+              placeholder="Enter IPFS CID..."
             />
-            <button 
+            <button
               onClick={() => {
-                if (currentCid.trim()) {
-                  setIpfsCids(prev => [...prev, {
-                    cid: currentCid.trim(),
+                if (cidInput.trim()) {
+                  const newCid = {
+                    cid: cidInput.trim(),
+                    name: `supportFile${ipfsCids.length + supportingFiles.length + 1}`,
                     description: '',
                     id: Date.now() + Math.random()
-                  }]);
-                  setCurrentCid('');
+                  };
+                  setIpfsCids(prev => [...prev, newCid]);
+                  setCidInput('');
                 }
               }}
-              className="primary"
             >
               Add CID
             </button>
@@ -742,6 +734,7 @@ function App() {
               {ipfsCids.map((cidObj, index) => (
                 <li key={cidObj.id}>
                   <div className="cid-entry">
+                    <span className="cid-name">{cidObj.name}</span>
                     <span className="cid-value">{cidObj.cid}</span>
                     <input
                       type="text"
@@ -1044,16 +1037,13 @@ function App() {
           }
         };
 
-        // Create references for supporting files
-        const fileReferences = supportingFiles.map((file, index) => ({
-          name: `supportingFile${index + 1}`,
-          originalName: file.file.name
-        }));
-
-        // Create query file content as JSON with proper references
+        // Create query file content as JSON
         const queryFileContent = {
           query: queryText,
-          references: fileReferences.map(ref => ref.name)
+          references: [
+            ...supportingFiles.map((_, index) => `supportingFile${index + 1}`),
+            ...ipfsCids.map(cidObj => cidObj.name)
+          ]
         };
 
         // Create the JSON file
@@ -1066,24 +1056,26 @@ function App() {
         // Initialize files array with primary file
         const files = [queryFile];
         
-        // Only add additional section to manifest if there are supporting files
-        if (supportingFiles.length > 0) {
-          manifest.additional = supportingFiles.map((file, index) => ({
-            name: fileReferences[index].name,
+        // Add all files to the additional section
+        manifest.additional = [
+          // Add local files
+          ...supportingFiles.map((file, index) => ({
+            name: `supportingFile${index + 1}`,
             type: file.file.type,
             filename: file.file.name,
             description: file.description || ''
-          }));
-          // Add supporting files to the archive
-          files.push(...supportingFiles.map(f => f.file));
-        }
+          })),
+          // Add IPFS CIDs
+          ...ipfsCids.map(cidObj => ({
+            name: cidObj.name,
+            type: 'ipfs/cid',
+            hash: cidObj.cid,
+            description: cidObj.description || ''
+          }))
+        ];
 
-        // Only add support section if there are external references
-        if (ipfsCids.length > 0) {
-          manifest.support = ipfsCids.map(cid => ({
-            hash: cid
-          }));
-        }
+        // Add supporting files to the archive
+        files.push(...supportingFiles.map(f => f.file));
 
         // Create the archive
         console.log('Creating archive with manifest:', manifest);

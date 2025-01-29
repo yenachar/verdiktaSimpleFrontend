@@ -12,7 +12,7 @@ Each archive of information (using 7z, zip, or tar+gzip) must contain a manifest
 
 2. **primary** (required)
    - Describes the primary file using ONE of:
-     - `filename`: Name of file located in the archive
+     - `filename`: Name of JSON file located in the archive OR 
      - `hash`: CID of externally hosted file
 
 3. **additional** (optional)
@@ -21,6 +21,7 @@ Each archive of information (using 7z, zip, or tar+gzip) must contain a manifest
      - `name`: Unique identifier for the file
      - `type`: Format descriptor
      - Either `filename` or `hash`
+     - Optionally, `description`
 
 4. **support** (optional)
    - List of hashes for supporting archives
@@ -45,180 +46,125 @@ Each archive of information (using 7z, zip, or tar+gzip) must contain a manifest
 - Video: AV1, WEBM
 
 ## Primary File Format
-The primary file must use the `QUERY` keyword to specify the AI evaluation query. References to supplemental data use the `REF:` prefix.
+The primary file is a JSON document with the following structure:
 
-## Examples
+• "query": The AI evaluation prompt or question  
+• "references": An array of identifiers for files in the "additional" section
 
-### Example 1: True/False Image Verification 
+Example primary file content in primary_query.json:
+```json
+{
+  "query": "How many red circles are in this image?  Possible answers are 0,1,2,3,4,5,6,7,8,9",
+  "references": [
+    "supportingFile1"
+  ]
+}
+```
 
-Archive Contents:
-- manifest.json
-- primary.txt
-- IMG_4872.JPG
-- IMG_4873.JPG
-
-manifest.json:
+Subsequent manifest.json:
 ```json
 {
   "version": "1.0",
   "primary": {
-    "filename": "primary.txt"
+    "filename": "primary_query.json"
+  },
+  "juryParameters": {
+    "NUMBER_OF_OUTCOMES": 10,
+    "AI_NODES": [
+      {
+        "AI_MODEL": "gpt-4o",
+        "AI_PROVIDER": "OpenAI",
+        "NO_COUNTS": 1,
+        "WEIGHT": 1
+      }
+    ],
+    "ITERATIONS": 1
   },
   "additional": [
     {
-      "name": "imageOfWoman1",
-      "type": "JPEG",
-      "filename": "IMG_4872.JPG"
-    },
-    {
-      "name": "imageOfWoman2",
-      "type": "JPEG",
-      "filename": "IMG_4873.JPG"
+      "name": "supportingFile1",
+      "type": "image/jpeg",
+      "filename": "red-circle-image.jpg",
+      "description": ""
     }
-  ],
+  ]
+}
+```
+
+Another example primary file:
+```json
+{
+  "query": "The images are primary focussed on 1) Sheep, or 2) Humans.  You can only pick one. ",
+  "references": [
+    "supportingFile1",
+    "supportingFile2",
+    "supportingFile3",
+    "supportingFile4"
+  ]
+}
+```
+
+With the following manifest.json:
+```json
+{
+  "version": "1.0",
+  "primary": {
+    "filename": "primary_query.json"
+  },
   "juryParameters": {
     "NUMBER_OF_OUTCOMES": 2,
     "AI_NODES": [
       {
-        "AI_MODEL": "GPT-4",
+        "AI_MODEL": "gpt-4o",
         "AI_PROVIDER": "OpenAI",
-        "NO_COUNTS": 3,
-        "WEIGHT": 1.0
+        "NO_COUNTS": 1,
+        "WEIGHT": 0.5
+      },
+      {
+        "AI_MODEL": "claude-3-5-sonnet-20241022",
+        "AI_PROVIDER": "Anthropic",
+        "NO_COUNTS": 1,
+        "WEIGHT": 0.5
       }
     ],
     "ITERATIONS": 1
-  }
-}
-```
-
-primary.txt:
-```text
-QUERY: The woman's dress in these images is red. True or False?
-REF:imageOfWoman1
-REF:imageOfWoman2
-```
-
-### Example 2: Data Analysis with External Support
-
-Archive Contents:
-- manifest.json
-- primary.txt
-- data.csv
-
-manifest.json:
-```json
-{
-  "version": "1.0",
-  "primary": {
-    "filename": "primary.txt"
   },
   "additional": [
     {
-      "name": "dataset",
-      "type": "CSV",
-      "filename": "data.csv"
-    }
-  ],
-  "support": [
+      "name": "supportingFile1",
+      "type": "image/jpeg",
+      "filename": "young-woman-with-dog.jpg",
+      "description": ""
+    },
     {
-      "hash": "bafybeid7yg3zb76beig63l3x7lxn6kyxyf4gwczp6xkjnju6spj3k2ry6q"
-    }
-  ],
-  "juryParameters": {
-    "NUMBER_OF_OUTCOMES": 4,
-    "AI_NODES": [
-      {
-        "AI_MODEL": "GPT-4",
-        "AI_PROVIDER": "OpenAI",
-        "NO_COUNTS": 2,
-        "WEIGHT": 0.7
-      },
-      {
-        "AI_MODEL": "BERT",
-        "AI_PROVIDER": "Google",
-        "NO_COUNTS": 2,
-        "WEIGHT": 0.3
-      }
-    ],
-    "ITERATIONS": 3
-  }
-}
-```
-
-primary.txt:
-```text
-QUERY: Based on the data provided, which factor most significantly impacts sales?
-A) Price
-B) Marketing Spend
-C) Seasonality
-D) Product Quality
-REF:dataset
-```
-
-### Example 3: Audio Analysis with External Primary File
-
-Archive Contents:
-- manifest.json
-- transcript.txt
-
-manifest.json:
-```json
-{
-  "version": "1.0",
-  "primary": {
-    "hash": "bafybeihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
-  },
-  "additional": [
+      "name": "supportingFile2",
+      "type": "image/jpeg",
+      "filename": "farmer-with-sheep-and-dog.jpg",
+      "description": ""
+    },
     {
-      "name": "transcript",
-      "type": "UTF8",
-      "filename": "transcript.txt"
+      "name": "supportingFile3",
+      "type": "image/jpeg",
+      "filename": "crowd.jpg",
+      "description": ""
+    },
+    {
+      "name": "supportingFile4",
+      "type": "image/jpeg",
+      "filename": "sheep.jpg",
+      "description": ""
     }
-  ],
-  "juryParameters": {
-    "NUMBER_OF_OUTCOMES": 3,
-    "AI_NODES": [
-      {
-        "AI_MODEL": "Whisper",
-        "AI_PROVIDER": "OpenAI",
-        "NO_COUNTS": 5,
-        "WEIGHT": 0.8
-      },
-      {
-        "AI_MODEL": "DeepSpeech",
-        "AI_PROVIDER": "Mozilla",
-        "NO_COUNTS": 2,
-        "WEIGHT": 0.2
-      }
-    ],
-    "ITERATIONS": 2
-  }
+  ]
 }
-```
-
-transcript.txt:
-```text
-REF:audioFile
-
-QUERY: Transcribe the provided audio file and determine the speaker's sentiment (Positive, Neutral, Negative).
 ```
 
 ## Implementation Notes
 
 ### File References
-- Files can be included directly in the archive or referenced via CID hash
-- The primary file must contain the query and any references to additional files
-- References to additional files use the `REF:` prefix followed by the file's name as specified in the manifest
-- External files are referenced using their IPFS CID hash
-
-### Best Practices
-- Use descriptive names for files in the `additional` section
-- Include file type information to ensure proper handling
-- Keep the primary query file clear and well-structured
-- Use appropriate weights for AI jury members based on their reliability
-- Consider the number of iterations based on the complexity of the query
+- The primary file is always JSON with a "query" field and an optional "references" array.  
+- References to additional files must match the `name` field in the manifest.  
+- External files can be referenced using `hash`.
 
 ### Version Control
-- The manifest format supports future extensions through version control
-- Always specify the version number to ensure compatibility
-- Future versions may include additional fields or modify existing ones
+- Always set the version field, starting with "1.0".
+- Future revisions may introduce breaking changes.
