@@ -295,22 +295,31 @@ const uploadToServer = async (file) => {
 
 // Add this utility function near the top with other utility functions
 const fetchWithRetry = async (url, retries = 3, delay = 2000) => {
+  // Extract CID from URL
   const cid = url.split('/ipfs/')[1];
+  
+  // Add validation before attempting fetch
+  if (!cid || cid.startsWith('QmExample')) {
+    console.warn('Invalid or placeholder CID detected:', cid);
+    throw new Error('Invalid CID format');
+  }
+
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetch(`${SERVER_URL}/api/fetch/${cid}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return response;
+      return await response.text();
     } catch (error) {
+      console.error(`Attempt ${i + 1} failed:`, error);
       if (i === retries - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 };
 
-// Add this utility function to help with debugging IPFS responses
+// Update the tryParseJustification function to handle the new format
 const tryParseJustification = async (response, cid, setOutcomes, setResultTimestamp) => {
   const rawText = await response.text();
   console.log('Raw IPFS response:', {
@@ -325,13 +334,21 @@ const tryParseJustification = async (response, cid, setOutcomes, setResultTimest
     const data = JSON.parse(rawText);
     console.log('Parsed JSON data:', data);
     
+    // Handle new format with scores array
+    if (data.scores && Array.isArray(data.scores)) {
+      // Convert scores array to outcomes array
+      const outcomeScores = data.scores.map(item => item.score);
+      setOutcomes(outcomeScores);
+      
+      // Update outcome labels if they exist
+      if (window.setOutcomeLabels) {
+        const outcomeLabels = data.scores.map(item => item.outcome);
+        window.setOutcomeLabels(outcomeLabels);
+      }
+    }
     // If we have a justification field, use it
     if (data.justification) {
-      // Also set the outcomes if they exist
-      if (data.aggregatedScore) {
-        setOutcomes(data.aggregatedScore);
-      }
-      // Also set the timestamp if it exists
+      // Set the timestamp if it exists
       if (data.timestamp) {
         setResultTimestamp(data.timestamp);
       }
@@ -426,7 +443,7 @@ function App() {
   }]);
   
   // Results state
-  const [resultCid, setResultCid] = useState('QmExample...123');
+  const [resultCid, setResultCid] = useState('');
   const [justification, setJustification] = useState(
     "Based on the provided query and supporting documentation, the AI Jury has reached the following conclusion:\n\n" +
     "The majority opinion (60%) favors Outcome 2, with a significant minority (40%) supporting Outcome 1. " +
@@ -450,7 +467,7 @@ function App() {
   // Add new state for the Run page
   const [selectedMethod, setSelectedMethod] = useState('config'); // 'config', 'file', or 'ipfs'
   const [queryPackageFile, setQueryPackageFile] = useState(null);
-  const [queryPackageCid, setQueryPackageCid] = useState('QmcMjSr4pL8dpNzjhGWaZ6vRmvv7fN3xsLJCDpqVsH7gv7');
+  const [queryPackageCid, setQueryPackageCid] = useState('');
 
   const [isConnected, setIsConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
@@ -467,6 +484,9 @@ function App() {
 
   // Add package details state at the component level
   const [packageDetails, setPackageDetails] = useState(null);
+
+  // Add new state for outcomes vector
+  const [outcomeLabels, setOutcomeLabels] = useState(['True', 'False']);
 
   // Add effect to fetch package details when currentCid changes
   useEffect(() => {
@@ -598,7 +618,7 @@ function App() {
 
         <div className="form-group">
           <div className="label-with-tooltip">
-            <label htmlFor="numOutcomes">Number of Possible Outcomes</label>
+            <label>Possible Outcomes</label>
             <div 
               className="tooltip-trigger"
               onMouseEnter={() => setActiveTooltipId('outcomes')}
@@ -607,21 +627,44 @@ function App() {
               ⓘ
               {activeTooltipId === 'outcomes' && (
                 <div className="tooltip-content">
-                  For a True/False question, enter 2. For a multiple-choice scenario with four possible answers, enter 4.
+                  Define the possible outcomes for your query. Each outcome will correspond to a position in the results vector.
                 </div>
               )}
             </div>
           </div>
-          <div className="numeric-input">
-            <button onClick={() => setNumOutcomes(prev => Math.max(2, prev - 1))}>-</button>
-            <input
-              type="number"
-              id="numOutcomes"
-              value={numOutcomes}
-              onChange={(e) => setNumOutcomes(Math.max(2, parseInt(e.target.value) || 2))}
-              min="2"
-            />
-            <button onClick={() => setNumOutcomes(prev => prev + 1)}>+</button>
+          <div className="outcomes-list">
+            {outcomeLabels.map((label, index) => (
+              <div key={index} className="outcome-entry">
+                <span className="outcome-index">{index + 1}.</span>
+                <input
+                  type="text"
+                  value={label}
+                  onChange={(e) => {
+                    const newLabels = [...outcomeLabels];
+                    newLabels[index] = e.target.value;
+                    setOutcomeLabels(newLabels);
+                  }}
+                  placeholder={`Outcome ${index + 1}`}
+                />
+                {outcomeLabels.length > 2 && (
+                  <button
+                    className="remove-outcome"
+                    onClick={() => {
+                      setOutcomeLabels(labels => labels.filter((_, i) => i !== index));
+                    }}
+                    title="Remove outcome"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              className="add-outcome"
+              onClick={() => setOutcomeLabels(labels => [...labels, `Outcome ${labels.length + 1}`])}
+            >
+              + Add Outcome
+            </button>
           </div>
         </div>
       </section>
@@ -1026,7 +1069,7 @@ function App() {
             filename: "primary_query.json"
           },
           juryParameters: {
-            NUMBER_OF_OUTCOMES: numOutcomes,
+            NUMBER_OF_OUTCOMES: outcomeLabels.length,
             AI_NODES: juryNodes.map(node => ({
               AI_MODEL: node.model,
               AI_PROVIDER: node.provider,
@@ -1043,7 +1086,8 @@ function App() {
           references: [
             ...supportingFiles.map((_, index) => `supportingFile${index + 1}`),
             ...ipfsCids.map(cidObj => cidObj.name)
-          ]
+          ],
+          outcomes: outcomeLabels
         };
 
         // Create the JSON file
@@ -1584,7 +1628,7 @@ function App() {
       if (!outcomes.length) return null;
 
       const data = {
-        labels: outcomes.map((_, index) => `Outcome ${index + 1}`),
+        labels: outcomes.map((_, index) => outcomeLabels[index] || `Outcome ${index + 1}`),
         datasets: [{
           label: 'Likelihood',
           data: outcomes,

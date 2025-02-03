@@ -15,6 +15,7 @@ const IPFS_FETCH_TIMEOUT = 45000; // 45 seconds base timeout
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 2000;
 const INITIAL_PROPAGATION_DELAY = 3000; // Wait 3 seconds before first attempt
+const CID_REGEX = /^Qm[1-9A-HJ-NP-Za-km-z]{44}|b[A-Za-z2-7]{58}|B[A-Z2-7]{58}|z[1-9A-HJ-NP-Za-km-z]{48}|F[0-9A-F]{50}$/i;
 
 // Error handling middleware
 const errorHandler = (err, req, res, next) => {
@@ -136,6 +137,16 @@ app.post('/api/upload', async (req, res) => {
 // IPFS fetch endpoint with improved retry logic
 app.get('/api/fetch/:cid', async (req, res) => {
   const { cid } = req.params;
+
+  // Validate CID format
+  if (!CID_REGEX.test(cid)) {
+    console.error('Invalid CID format:', cid);
+    return res.status(400).json({
+      error: 'Invalid CID format',
+      details: 'The provided CID does not match the expected format'
+    });
+  }
+
   let currentTry = 0;
 
   // Add initial delay for IPFS propagation
@@ -202,9 +213,14 @@ app.get('/api/fetch/:cid', async (req, res) => {
             timeoutPromise
           ]);
 
+          // Log response status for debugging
+          console.log(`Gateway ${gateway} response status:`, response.status);
+
           if (response.ok) {
             const data = await response.buffer();
             return { data, headers: response.headers, gateway };
+          } else if (response.status === 404) {
+            throw new Error(`CID not found: ${cid}`);
           }
           
           console.log(`Gateway ${gateway} returned status: ${response.status}`);
@@ -212,12 +228,10 @@ app.get('/api/fetch/:cid', async (req, res) => {
           if (gatewayError.name === 'AbortError') {
             throw gatewayError; // Propagate timeout errors
           }
-          // Log but continue if it's a DNS or network error
-          if (gatewayError.code === 'ENOTFOUND' || gatewayError.code === 'ECONNREFUSED') {
-            console.log(`Gateway ${gateway} is not available:`, gatewayError.message);
-          } else {
-            console.log(`Gateway ${gateway} failed:`, gatewayError.message);
+          if (gatewayError.message.includes('CID not found')) {
+            throw gatewayError; // Propagate 404 errors
           }
+          console.log(`Gateway ${gateway} failed:`, gatewayError.message);
           continue;
         }
       }
@@ -248,6 +262,14 @@ app.get('/api/fetch/:cid', async (req, res) => {
     } catch (error) {
       console.error(`Attempt ${currentTry + 1} failed:`, error);
       
+      // If CID not found, return 404 immediately
+      if (error.message.includes('CID not found')) {
+        return res.status(404).json({
+          error: 'CID not found',
+          details: error.message
+        });
+      }
+      
       if (currentTry === MAX_RETRIES - 1) {
         return res.status(error.name === 'AbortError' ? 504 : 500).json({
           error: 'Failed to fetch from IPFS',
@@ -258,7 +280,7 @@ app.get('/api/fetch/:cid', async (req, res) => {
 
       // Exponential backoff with jitter
       const baseDelay = INITIAL_RETRY_DELAY * Math.pow(2, currentTry);
-      const jitter = Math.random() * 1000; // Add up to 1 second of random jitter
+      const jitter = Math.random() * 1000;
       const delay = baseDelay + jitter;
       
       console.log(`Waiting ${Math.round(delay)}ms before retry...`);

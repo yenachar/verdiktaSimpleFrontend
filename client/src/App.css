@@ -1153,3 +1153,67 @@ button.large {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.outcomes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.outcome-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.outcome-index {
+  width: 1.5rem;
+  color: var(--color-text-dark);
+  font-weight: 500;
+}
+
+.outcome-entry input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.remove-outcome {
+  background: none;
+  border: none;
+  color: #dc3545;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+}
+
+.remove-outcome:hover {
+  background: #dc3545;
+  color: white;
+}
+
+.add-outcome {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: none;
+  border: 2px dashed var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-dark);
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+}
+
+.add-outcome:hover {
+  border-color: var(--color-primary-purple);
+  color: var(--color-primary-purple);
+}
