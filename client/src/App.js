@@ -61,6 +61,9 @@ const BASE_SEPOLIA_PARAMS = {
   blockExplorerUrls: ['https://sepolia.basescan.org']
 };
 
+// Add this constant near the top of the file with other constants
+const DEFAULT_QUERY_CID = 'QmcMjSr4pL8dpNzjhGWaZ6vRmvv7fN3xsLJCDpqVsH7gv7';
+
 // Utility function to help with contract debugging
 const debugContract = async (contract) => {
   console.log("Debug contract called with:", {
@@ -1493,6 +1496,10 @@ function App() {
   const renderRun = () => {
     const handleMethodChange = (method) => {
       setSelectedMethod(method);
+      // Set default CID when IPFS method is selected
+      if (method === 'ipfs') {
+        setQueryPackageCid(DEFAULT_QUERY_CID);
+      }
     };
 
     const handleFileUpload = (event) => {
