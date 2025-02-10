@@ -35,7 +35,7 @@ const ChevronRight = () => (
   </svg>
 );
 
-const PaginatedJustification = ({ resultCid, fetchWithRetry, tryParseJustification, setOutcomes, setResultTimestamp }) => {
+const PaginatedJustification = ({ resultCid, fetchWithRetry, tryParseJustification, setOutcomes, setResultTimestamp, setOutcomeLabels }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [justifications, setJustifications] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -54,7 +54,8 @@ const PaginatedJustification = ({ resultCid, fetchWithRetry, tryParseJustificati
           response,
           cid,
           setOutcomes,
-          setResultTimestamp
+          setResultTimestamp,
+          setOutcomeLabels
         );
         return justificationText;
       } catch (error) {
@@ -79,7 +80,7 @@ const PaginatedJustification = ({ resultCid, fetchWithRetry, tryParseJustificati
           setLoading(false);
         });
     }
-  }, [resultCid, fetchWithRetry, tryParseJustification, setOutcomes, setResultTimestamp]);
+  }, [resultCid, fetchWithRetry, tryParseJustification, setOutcomes, setResultTimestamp, setOutcomeLabels]);
 
   if (cids.length === 0) {
     return <div className="text-red-500">No justification CIDs available</div>;

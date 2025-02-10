@@ -293,7 +293,7 @@ const uploadToServer = async (file) => {
   }
 };
 
-// Add this utility function near the top with other utility functions
+// Update fetchWithRetry to return the actual response object instead of text
 const fetchWithRetry = async (url, retries = 3, delay = 2000) => {
   // Extract CID from URL
   const cid = url.split('/ipfs/')[1];
@@ -310,7 +310,8 @@ const fetchWithRetry = async (url, retries = 3, delay = 2000) => {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return await response.text();
+      // Return the response object instead of calling .text()
+      return response;
     } catch (error) {
       console.error(`Attempt ${i + 1} failed:`, error);
       if (i === retries - 1) throw error;
@@ -319,18 +320,18 @@ const fetchWithRetry = async (url, retries = 3, delay = 2000) => {
   }
 };
 
-// Update the tryParseJustification function to handle the new format
-const tryParseJustification = async (response, cid, setOutcomes, setResultTimestamp) => {
-  const rawText = await response.text();
-  console.log('Raw IPFS response:', {
-    cid,
-    contentType: response.headers.get('content-type'),
-    length: rawText.length,
-    preview: rawText.slice(0, 200)
-  });
-
+// Update tryParseJustification to handle the response properly
+const tryParseJustification = async (response, cid, setOutcomes, setResultTimestamp, setOutcomeLabels) => {
   try {
-    // Try to parse as JSON first
+    const rawText = await response.text();
+    console.log('Raw IPFS response:', {
+      cid,
+      contentType: response.headers?.get('content-type'),
+      length: rawText.length,
+      preview: rawText.slice(0, 200)
+    });
+
+    // Try to parse as JSON
     const data = JSON.parse(rawText);
     console.log('Parsed JSON data:', data);
     
@@ -340,26 +341,21 @@ const tryParseJustification = async (response, cid, setOutcomes, setResultTimest
       const outcomeScores = data.scores.map(item => item.score);
       setOutcomes(outcomeScores);
       
-      // Update outcome labels if they exist
-      if (window.setOutcomeLabels) {
-        const outcomeLabels = data.scores.map(item => item.outcome);
-        window.setOutcomeLabels(outcomeLabels);
-      }
+      // Always update outcome labels from scores array
+      const outcomeLabels = data.scores.map(item => item.outcome);
+      setOutcomeLabels(outcomeLabels);
     }
-    // If we have a justification field, use it
-    if (data.justification) {
-      // Set the timestamp if it exists
-      if (data.timestamp) {
-        setResultTimestamp(data.timestamp);
-      }
-      return data.justification;
+
+    // Set the timestamp if it exists
+    if (data.timestamp) {
+      setResultTimestamp(data.timestamp);
     }
-    
-    // Fallback to stringifying the whole response if no justification field
-    return JSON.stringify(data, null, 2);
+
+    // Return the justification text
+    return data.justification || JSON.stringify(data, null, 2);
   } catch (parseError) {
-    console.log('Not valid JSON, using as plain text');
-    return rawText;
+    console.error('Error parsing justification:', parseError);
+    throw new Error(`Failed to parse justification: ${parseError.message}`);
   }
 };
 
@@ -427,10 +423,12 @@ function App() {
   
   // Query Definition state
   const [queryText, setQueryText] = useState('');
-  const [numOutcomes, setNumOutcomes] = useState(2);
   const [supportingFiles, setSupportingFiles] = useState([]);
   const [ipfsCids, setIpfsCids] = useState([]);
   const [cidInput, setCidInput] = useState('');
+
+  // Add new state for outcomes vector
+  const [outcomeLabels, setOutcomeLabels] = useState(['True', 'False']);
   
   // Jury Selection state
   const [iterations, setIterations] = useState(1);
@@ -484,9 +482,6 @@ function App() {
 
   // Add package details state at the component level
   const [packageDetails, setPackageDetails] = useState(null);
-
-  // Add new state for outcomes vector
-  const [outcomeLabels, setOutcomeLabels] = useState(['True', 'False']);
 
   // Add effect to fetch package details when currentCid changes
   useEffect(() => {
@@ -857,7 +852,12 @@ function App() {
         <h2>Jury Selection</h2>
         
         <div className="configuration-summary">
-          <p>Query will have {numOutcomes} possible outcomes</p>
+          <p>Query will have {outcomeLabels?.length || 0} possible outcomes:</p>
+          <ul className="outcomes-list">
+            {outcomeLabels?.map((label, index) => (
+              <li key={index}>{label}</li>
+            ))}
+          </ul>
         </div>
 
         <section className="iterations-section">
@@ -1029,7 +1029,10 @@ function App() {
           </button>
           <button 
             className="primary"
-            onClick={() => setCurrentPage(PAGES.RUN)}
+            onClick={() => {
+              setSelectedMethod('config');
+              setCurrentPage(PAGES.RUN);
+            }}
             disabled={juryNodes.length === 0}
           >
             Next: Run Query
@@ -1221,7 +1224,8 @@ function App() {
             response, 
             evaluation.justificationCID,
             setOutcomes,
-            setResultTimestamp
+            setResultTimestamp,
+            setOutcomeLabels
           );
           setJustification(justificationText);
         } catch (error) {
@@ -1340,7 +1344,8 @@ function App() {
               response, 
               evaluation.justificationCID,
               setOutcomes,
-              setResultTimestamp
+              setResultTimestamp,
+              setOutcomeLabels
             );
             setJustification(justificationText);
           } catch (error) {
@@ -1453,7 +1458,8 @@ function App() {
               response, 
               evaluation.justificationCID,
               setOutcomes,
-              setResultTimestamp
+              setResultTimestamp,
+              setOutcomeLabels
             );
             setJustification(justificationText);
           } catch (error) {
@@ -1538,7 +1544,13 @@ function App() {
                 <h4>Current Configuration Summary</h4>
                 <div className="summary-details">
                   <p><strong>Query Text:</strong> {queryText}</p>
-                  <p><strong>Outcomes:</strong> {numOutcomes}</p>
+                  <p><strong>Outcomes ({outcomeLabels?.length || 0}):</strong>
+                    <ul>
+                      {outcomeLabels?.map((label, index) => (
+                        <li key={index}>{label}</li>
+                      ))}
+                    </ul>
+                  </p>
                   <p><strong>Supporting Files:</strong> {supportingFiles.length}</p>
                   <p><strong>IPFS CIDs:</strong> {ipfsCids.length}</p>
                   <p><strong>Jury Members:</strong> {juryNodes.length}</p>
@@ -1628,15 +1640,15 @@ function App() {
       if (!outcomes.length) return null;
 
       const data = {
-        labels: outcomes.map((_, index) => outcomeLabels[index] || `Outcome ${index + 1}`),
+        labels: outcomeLabels.slice(0, outcomes.length), // Use outcomeLabels from state
         datasets: [{
           label: 'Likelihood',
           data: outcomes,
           backgroundColor: outcomes.map((_, index) => 
-            index === 0 ? 'rgba(94, 55, 244, 0.8)' : 'rgba(61, 35, 94, 0.8)'
+            `hsla(${(index * 360) / outcomes.length}, 70%, 60%, 0.8)`
           ),
           borderColor: outcomes.map((_, index) => 
-            index === 0 ? '#5E37F4' : '#3D235E'
+            `hsla(${(index * 360) / outcomes.length}, 70%, 50%, 1)`
           ),
           borderWidth: 1
         }]
@@ -1647,7 +1659,12 @@ function App() {
         scales: {
           y: {
             beginAtZero: true,
-            max: 1000000
+            max: 1000000,
+            ticks: {
+              callback: (value) => {
+                return `${(value / 10000).toFixed(1)}%`;
+              }
+            }
           }
         },
         plugins: {
@@ -1685,7 +1702,7 @@ function App() {
               </div>
             </div>
             <div className="config-stats">
-              <span>Outcomes: {packageDetails ? packageDetails.numOutcomes : numOutcomes}</span>
+              <span>Outcomes: {packageDetails ? packageDetails.numOutcomes : outcomeLabels.length}</span>
               <span>Iterations: {packageDetails ? packageDetails.iterations : iterations}</span>
               <span>Jury Members: {packageDetails ? packageDetails.juryNodes.length : juryNodes.length}</span>
               <span>Supporting Files: {packageDetails ? 
@@ -1803,6 +1820,7 @@ function App() {
                   tryParseJustification={tryParseJustification}
                   setOutcomes={setOutcomes}
                   setResultTimestamp={setResultTimestamp}
+                  setOutcomeLabels={setOutcomeLabels}
                 />
               </div>
             </div>
