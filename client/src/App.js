@@ -64,6 +64,21 @@ const BASE_SEPOLIA_PARAMS = {
 // Add this constant near the top of the file with other constants
 const DEFAULT_QUERY_CID = 'QmcMjSr4pL8dpNzjhGWaZ6vRmvv7fN3xsLJCDpqVsH7gv7';
 
+// Add this helper function near the top of App.js, after the constants and before the App function
+const getAugmentedQueryText = (originalQuery, links) => {
+  if (!links || links.length === 0) return originalQuery;
+  
+  const linkSection = links
+    .filter(link => link.url && link.url.trim())
+    .map(link => {
+      const description = link.description ? `    ${link.description}` : '';
+      return `${link.url}${description}`;
+    })
+    .join('\n');
+    
+  return linkSection ? `${originalQuery}\n\nReference URLs to review:\n${linkSection}` : originalQuery;
+};
+
 // Utility function to help with contract debugging
 const debugContract = async (contract) => {
   console.log("Debug contract called with:", {
@@ -486,6 +501,10 @@ function App() {
   // Add package details state at the component level
   const [packageDetails, setPackageDetails] = useState(null);
 
+  // Add new state variables after other state declarations
+  const [hyperlinks, setHyperlinks] = useState([]);
+  const [linkInput, setLinkInput] = useState('');
+
   // Add effect to fetch package details when currentCid changes
   useEffect(() => {
     if (currentCid) {
@@ -800,6 +819,83 @@ function App() {
             </ul>
           )}
         </div>
+
+        <div className="form-group">
+          <div className="label-with-tooltip">
+            <label>Add Reference URLs</label>
+            <div 
+              className="tooltip-trigger"
+              onMouseEnter={() => setActiveTooltipId('urls')}
+              onMouseLeave={() => setActiveTooltipId(null)}
+            >
+              ⓘ
+              {activeTooltipId === 'urls' && (
+                <div className="tooltip-content">
+                  Add URLs to relevant web content that the AI Jury should review as part of their evaluation.
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="url-input-group">
+            <input
+              type="url"
+              value={linkInput}
+              onChange={(e) => setLinkInput(e.target.value)}
+              placeholder="Enter URL..."
+            />
+            <button
+              onClick={() => {
+                if (linkInput.trim()) {
+                  const newLink = {
+                    url: linkInput.trim(),
+                    description: '',
+                    id: Date.now() + Math.random()
+                  };
+                  setHyperlinks(prev => [...prev, newLink]);
+                  setLinkInput('');
+                }
+              }}
+            >
+              Add URL
+            </button>
+          </div>
+
+          {hyperlinks.length > 0 && (
+            <ul className="url-list">
+              {hyperlinks.map((linkObj, index) => (
+                <li key={linkObj.id}>
+                  <div className="url-entry">
+                    <a 
+                      href={linkObj.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="url-value"
+                    >
+                      {linkObj.url}
+                    </a>
+                    <input
+                      type="text"
+                      placeholder="Add description..."
+                      value={linkObj.description}
+                      onChange={(e) => {
+                        setHyperlinks(prev => prev.map((item, i) => 
+                          i === index ? { ...item, description: e.target.value } : item
+                        ));
+                      }}
+                      className="description-input"
+                    />
+                    <button 
+                      onClick={() => setHyperlinks(prev => prev.filter((_, i) => i !== index))}
+                      className="remove-button"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       <div className="actions">
@@ -1088,7 +1184,7 @@ function App() {
 
         // Create query file content as JSON
         const queryFileContent = {
-          query: queryText,
+          query: getAugmentedQueryText(queryText, hyperlinks),
           references: [
             ...supportingFiles.map((_, index) => `supportingFile${index + 1}`),
             ...ipfsCids.map(cidObj => cidObj.name)
@@ -1550,18 +1646,51 @@ function App() {
               <div className="config-summary">
                 <h4>Current Configuration Summary</h4>
                 <div className="summary-details">
-                  <p><strong>Query Text:</strong> {queryText}</p>
-                  <p><strong>Outcomes ({outcomeLabels?.length || 0}):</strong>
+                  <p>
+                    <strong>Query Text:</strong> {queryText}
+                  </p>
+                  <p>
+                    <strong>Outcomes ({outcomeLabels?.length || 0}):</strong>
                     <ul>
                       {outcomeLabels?.map((label, index) => (
                         <li key={index}>{label}</li>
                       ))}
                     </ul>
                   </p>
-                  <p><strong>Supporting Files:</strong> {supportingFiles.length}</p>
-                  <p><strong>IPFS CIDs:</strong> {ipfsCids.length}</p>
-                  <p><strong>Jury Members:</strong> {juryNodes.length}</p>
-                  <p><strong>Iterations:</strong> {iterations}</p>
+                  <p>
+                    <strong>Supporting Files:</strong> {supportingFiles.length}
+                  </p>
+                  <p>
+                    <strong>IPFS CIDs:</strong> {ipfsCids.length}
+                  </p>
+                  {hyperlinks.length > 0 && (
+                    <p>
+                      <strong>Reference URLs ({hyperlinks.length}):</strong>
+                      <ul>
+                        {hyperlinks.map((link, index) => (
+                          <li key={index}>
+                            <a 
+                              href={link.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="url-value"
+                            >
+                              {link.url}
+                            </a>
+                            {link.description && (
+                              <span className="url-description"> - {link.description}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </p>
+                  )}
+                  <p>
+                    <strong>Jury Members:</strong> {juryNodes.length}
+                  </p>
+                  <p>
+                    <strong>Iterations:</strong> {iterations}
+                  </p>
                 </div>
               </div>
             )}

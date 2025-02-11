@@ -832,6 +832,24 @@ button.large {
   margin-bottom: 0.5rem;
 }
 
+/* Add styles for URLs in config summary */
+.summary-details .url-value {
+  color: var(--color-primary-purple);
+  text-decoration: none;
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.summary-details .url-value:hover {
+  text-decoration: underline;
+}
+
+.summary-details .url-description {
+  color: var(--color-text-dark);
+  font-style: italic;
+  margin-left: 0.5rem;
+}
+
 /* File Upload Styles */
 .file-upload {
   text-align: center;
@@ -1309,4 +1327,44 @@ button.large {
 /* Add space between iterations and the model table */
 .jury-table-header {
   margin-top: 1rem;
+}
+
+/* Add URL input styles */
+.url-input-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.url-input-group input {
+  flex: 1;
+}
+
+.url-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.url-entry {
+  display: grid;
+  grid-template-columns: 1fr 200px 40px;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: var(--color-light-bg);
+  margin-bottom: 0.5rem;
+  border-radius: 4px;
+}
+
+.url-value {
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-primary-purple);
+  text-decoration: none;
+}
+
+.url-value:hover {
+  text-decoration: underline;
 }
