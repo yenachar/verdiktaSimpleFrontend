@@ -1,6 +1,7 @@
 // src/components/PaginatedJustification.js
 
 import React, { useState, useEffect } from 'react';
+import { fetchWithRetry, tryParseJustification } from '../utils/fetchUtils';
 
 // Simple arrow components to avoid external dependency
 const ChevronLeft = () => (
@@ -35,55 +36,103 @@ const ChevronRight = () => (
   </svg>
 );
 
-const PaginatedJustification = ({ resultCid, fetchWithRetry, tryParseJustification, setOutcomes, setResultTimestamp, setOutcomeLabels }) => {
+const PaginatedJustification = ({ 
+  resultCid, 
+  initialText,
+  onFetchComplete,
+  onUpdateOutcomes,
+  onUpdateTimestamp,
+  setOutcomeLabels 
+}) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [justifications, setJustifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   // Split CIDs and clean them
   const cids = resultCid?.split(',').map(cid => cid.trim()).filter(Boolean) || [];
 
   useEffect(() => {
+    // Reset state when resultCid changes
+    if (resultCid) {
+      setHasLoaded(false);
+    }
+  }, [resultCid]);
+
+  useEffect(() => {
+    console.log('PaginatedJustification effect triggered:', {
+      resultCid,
+      initialText,
+      cidsLength: cids.length,
+      hasLoaded
+    });
+
+    // If we've already loaded this CID, don't reload
+    if (hasLoaded) {
+      return;
+    }
+
     const loadJustification = async (cid) => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetchWithRetry(`https://ipfs.io/ipfs/${cid}`);
+        console.log('Fetching justification for CID:', cid);
+        const response = await fetchWithRetry(cid);
+        console.log('Received response for CID:', cid);
+        
         const justificationText = await tryParseJustification(
           response,
           cid,
-          setOutcomes,
-          setResultTimestamp,
+          onUpdateOutcomes,
+          onUpdateTimestamp,
           setOutcomeLabels
         );
+        console.log('Parsed justification:', justificationText?.substring(0, 100) + '...');
         return justificationText;
       } catch (error) {
         console.error('Error loading justification:', error);
+        setError(error.message);
         return `Error loading justification: ${error.message}`;
       }
     };
 
-    // Reset state when resultCid changes
-    setCurrentPage(0);
-    setJustifications([]);
+    // Initialize with initial text if available and no CIDs
+    if (initialText && cids.length === 0) {
+      setJustifications([initialText]);
+      setHasLoaded(true);
+      return;
+    }
 
-    // Load all justifications if they haven't been loaded yet
+    // Load justifications if we have CIDs
     if (cids.length > 0) {
       Promise.all(cids.map(loadJustification))
         .then(results => {
-          setJustifications(results);
+          console.log('Loaded justifications:', results.length);
+          const validResults = results.filter(Boolean);
+          setJustifications(validResults);
           setLoading(false);
+          setHasLoaded(true);
+          
+          // Call onFetchComplete with the first valid result
+          const validResult = validResults.find(r => !r.startsWith('Error'));
+          if (onFetchComplete && validResult) {
+            console.log('Calling onFetchComplete with result');
+            onFetchComplete(validResult);
+          }
         })
         .catch(error => {
+          console.error('Error in Promise.all:', error);
           setError(error.message);
           setLoading(false);
+          setHasLoaded(true);
         });
     }
-  }, [resultCid, fetchWithRetry, tryParseJustification, setOutcomes, setResultTimestamp, setOutcomeLabels]);
+  }, [resultCid, initialText, hasLoaded]); // Remove other dependencies that cause re-fetching
 
-  if (cids.length === 0) {
-    return <div className="text-red-500">No justification CIDs available</div>;
+  // If no CIDs and no justifications, show appropriate message
+  if (cids.length === 0 && justifications.length === 0) {
+    return <div className="text-gray-500">No justification available</div>;
   }
 
   const currentJustification = justifications[currentPage] || '';
@@ -120,9 +169,11 @@ const PaginatedJustification = ({ resultCid, fetchWithRetry, tryParseJustificati
       )}
 
       {/* Current CID display */}
-      <div className="text-sm text-gray-500 mb-4">
-        Current CID: {cids[currentPage]}
-      </div>
+      {cids[currentPage] && (
+        <div className="text-sm text-gray-500 mb-4">
+          Current CID: {cids[currentPage]}
+        </div>
+      )}
 
       {/* Justification content */}
       <div className="bg-white p-6 rounded-lg shadow whitespace-pre-wrap">
@@ -133,7 +184,7 @@ const PaginatedJustification = ({ resultCid, fetchWithRetry, tryParseJustificati
         ) : error ? (
           <div className="text-red-500">{error}</div>
         ) : (
-          currentJustification
+          currentJustification || 'No justification text available'
         )}
       </div>
     </div>

@@ -1,8 +1,6 @@
 // src/utils/contractUtils.js
 
 import { ethers } from 'ethers';
-import { uploadToServer, fetchWithRetry } from './ipfsUtils';
-import { createQueryPackageArchive } from './packageUtils';
 
 // ------------------
 // Contract Constants
@@ -37,26 +35,58 @@ export const BASE_SEPOLIA_PARAMS = {
 // ------------------
 // Helper Functions
 // ------------------
-async function debugContract(contract) {
+export async function debugContract(contract) {
+  console.log("Debug contract called with:", {
+    contractExists: !!contract,
+    contractType: typeof contract,
+    contractKeys: contract ? Object.keys(contract) : 'N/A'
+  });
+
   if (!contract) {
-    console.error('Contract is undefined or null');
+    console.error("Contract is undefined or null");
     return;
   }
+
   try {
-    console.log('Contract debug info:', {
-      target: contract.target,
-      interfaceFunctions: contract.interface ? Object.keys(contract.interface.functions) : [],
-      providerType: typeof contract.provider,
-      signerType: typeof contract.signer
-    });
+    const debugInfo = {
+      target: {
+        exists: !!contract.target,
+        value: contract.target,
+        type: typeof contract.target
+      },
+      interface: {
+        exists: !!contract.interface,
+        type: typeof contract.interface,
+        functions: contract.interface ? 
+          Object.keys(contract.interface.functions || {}) : 
+          'No functions found'
+      },
+      provider: {
+        exists: !!contract.provider,
+        type: typeof contract.provider
+      },
+      signer: {
+        exists: !!contract.signer,
+        type: typeof contract.signer
+      }
+    };
+
+    console.log("Contract debug info:", debugInfo);
   } catch (error) {
-    console.error('Error in debugContract:', error);
+    console.error("Error in debugContract:", {
+      errorMessage: error.message,
+      errorType: error.name,
+      errorStack: error.stack
+    });
   }
 }
 
 export async function switchToBaseSepolia(provider) {
   const network = await provider.getNetwork();
+  console.log("Current network:", network);
+
   if (network.chainId.toString() !== BASE_SEPOLIA_CHAIN_ID.toString()) {
+    console.log("Not on Base Sepolia, attempting to switch...");
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
@@ -72,350 +102,123 @@ export async function switchToBaseSepolia(provider) {
         } catch (addError) {
           throw new Error('Please add Base Sepolia network to MetaMask and try again');
         }
-      } else {
-        throw new Error('Please switch to Base Sepolia network in MetaMask');
       }
-      return new Promise((resolve) => {
-        const handleNetworkChange = () => {
-          window.ethereum.removeListener('chainChanged', handleNetworkChange);
-          setTimeout(async () => {
-            const newProvider = new ethers.BrowserProvider(window.ethereum);
-            resolve(newProvider);
-          }, 1000);
-        };
-        window.ethereum.on('chainChanged', handleNetworkChange);
-      });
+      throw new Error('Please switch to Base Sepolia network in MetaMask');
     }
+
+    // Wait for network change to complete
+    return new Promise((resolve) => {
+      const handleNetworkChange = () => {
+        window.ethereum.removeListener('chainChanged', handleNetworkChange);
+        setTimeout(async () => {
+          const newProvider = new ethers.BrowserProvider(window.ethereum);
+          resolve(newProvider);
+        }, 1000);
+      };
+      window.ethereum.on('chainChanged', handleNetworkChange);
+    });
   }
   return provider;
 }
 
 export async function checkContractFunding(contract, provider) {
   try {
-    await debugContract(contract);
-    const code = await provider.getCode(contract.target);
-    if (code === '0x') {
-      throw new Error(`No contract code found at address ${contract.target}`);
+    console.log("checkContractFunding called with:", {
+      contractExists: !!contract,
+      providerExists: !!provider,
+      contractAddress: contract?.target
+    });
+
+    if (!contract || !provider) {
+      throw new Error(`Invalid parameters: contract=${!!contract}, provider=${!!provider}`);
     }
+
+    // Check network and attempt to switch if needed
+    const network = await provider.getNetwork();
+    console.log("Current network:", network);
+
+    // Compare chainId as strings to avoid BigInt issues
+    if (network.chainId.toString() !== BASE_SEPOLIA_CHAIN_ID.toString()) {
+      console.log("Not on Base Sepolia, attempting to switch...");
+      try {
+        // Try to switch to Base Sepolia
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: BASE_SEPOLIA_PARAMS.chainId }]
+        });
+      } catch (switchError) {
+        // This error code indicates that the chain has not been added to MetaMask
+        if (switchError.code === 4902) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [BASE_SEPOLIA_PARAMS]
+            });
+          } catch (addError) {
+            throw new Error('Please add Base Sepolia network to MetaMask and try again');
+          }
+        }
+        throw new Error('Please switch to Base Sepolia network in MetaMask');
+      }
+      
+      // Get new provider after network switch
+      const newProvider = new ethers.BrowserProvider(window.ethereum);
+      // Wait a moment for the network switch to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Create new contract instance with new provider
+      const newContract = new ethers.Contract(contract.target, CONTRACT_ABI, await newProvider.getSigner());
+      
+      // Recursively call with new contract and provider
+      return checkContractFunding(newContract, newProvider);
+    }
+
+    // Debug contract interface
+    await debugContract(contract);
+    
+    // Verify contract code exists at address
+    const code = await provider.getCode(contract.target);
+    console.log("Contract code at address:", {
+      address: contract.target,
+      codeExists: code !== '0x',
+      codeLength: code.length
+    });
+
+    if (code === '0x') {
+      throw new Error(`No contract found at address ${contract.target}`);
+    }
+
+    console.log("Calling getContractConfig...");
     const config = await contract.getContractConfig();
-    console.log('Contract config:', config);
+    console.log("Contract config received:", config);
 
     const linkToken = new ethers.Contract(
       config.linkAddr,
       ['function balanceOf(address) view returns (uint256)'],
       provider
     );
+    
     const balance = await linkToken.balanceOf(contract.target);
     const fee = config.currentFee;
-    console.log('Contract LINK balance:', ethers.formatEther(balance), 'Required fee:', ethers.formatEther(fee));
-
+    
+    console.log("Contract LINK balance:", ethers.formatEther(balance));
+    console.log("Required fee:", ethers.formatEther(fee));
+    
     if (balance < fee) {
-      throw new Error(
-        `Insufficient LINK tokens. Contract needs ${ethers.formatEther(fee)}, has ${ethers.formatEther(balance)}`
-      );
+      throw new Error(`Insufficient LINK tokens. Contract needs at least ${ethers.formatEther(fee)} LINK but has ${ethers.formatEther(balance)} LINK`);
     }
+    
     return config;
   } catch (error) {
-    console.error('checkContractFunding error:', error);
+    console.error("Detailed error in checkContractFunding:", {
+      message: error.message,
+      code: error.code,
+      data: error.data,
+      name: error.name,
+      stack: error.stack,
+      contract: contract?.target,
+      provider: provider?.connection?.url
+    });
     throw error;
-  }
-}
-
-/**
- * Attempts to parse justification from the server's IPFS fetch response.
- * This updates outcomes/timestamp if your JSON includes them.
- */
-async function tryParseJustification(response, cid, setOutcomes, setResultTimestamp) {
-  const rawText = await response.text();
-  console.log(`Justification raw data (CID: ${cid}):`, rawText.slice(0, 200));
-
-  try {
-    const data = JSON.parse(rawText);
-    if (data.scores && Array.isArray(data.scores)) {
-      const outcomeScores = data.scores.map((item) => item.score);
-      setOutcomes(outcomeScores);
-      // If you have something like window.setOutcomeLabels(...) in the old code,
-      // you can handle that logic here if needed.
-    }
-    if (data.timestamp) {
-      setResultTimestamp(data.timestamp);
-    }
-    return data.justification || JSON.stringify(data, null, 2);
-  } catch (e) {
-    console.log('Could not parse JSON, returning raw text.');
-    return rawText;
-  }
-}
-
-// ------------------
-// Main function
-// ------------------
-/**
- * Replicates the old "handleRunQuery" logic from your original App.js,
- * but now integrated with your new architecture:
- *  - Checking/wallet connection
- *  - Possibly uploading a ZIP to your Node server (which pins to IPFS)
- *  - Sending requestAIEvaluation to the contract
- *  - Polling for results
- *  - Setting outcomes/justification in React state
- */
-export async function runQueryOnContract(args) {
-  const {
-    selectedMethod, // 'config', 'file', or 'ipfs'
-    queryText,
-    outcomeLabels,
-    supportingFiles,
-    ipfsCids,
-    juryNodes,
-    iterations,
-    queryPackageFile,
-    queryPackageCid,
-    contractAddress,
-
-    // React state setters
-    setTransactionStatus,
-    setLoadingResults,
-    setUploadProgress,
-    setCurrentCid,
-    setPackageDetails,
-    setResultCid,
-    setJustification,
-    setOutcomes,
-    setResultTimestamp
-  } = args;
-
-  // 1) Connect + switch to Base Sepolia
-  let provider = new ethers.BrowserProvider(window.ethereum);
-  provider = await switchToBaseSepolia(provider);
-  const signer = await provider.getSigner();
-  const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
-
-  // 2) Check contract funding
-  setTransactionStatus?.('Checking contract funding...');
-  await checkContractFunding(contract, provider);
-
-  // 3) Different logic per method
-  switch (selectedMethod) {
-    case 'config': {
-      // Build + upload from current config
-      setTransactionStatus?.('Building archive from config...');
-      const manifest = {
-        version: '1.0',
-        primary: { filename: 'primary_query.json' },
-        juryParameters: {
-          NUMBER_OF_OUTCOMES: outcomeLabels.length,
-          AI_NODES: juryNodes.map((node) => ({
-            AI_PROVIDER: node.provider,
-            AI_MODEL: node.model,
-            NO_COUNTS: node.runs,
-            WEIGHT: node.weight
-          })),
-          ITERATIONS: iterations
-        }
-      };
-
-      // Primary query JSON
-      const queryFileContent = {
-        query: queryText,
-        references: [
-          ...supportingFiles.map((_, i) => `supportingFile${i + 1}`),
-          ...ipfsCids.map((c) => c.name)
-        ],
-        outcomes: outcomeLabels
-      };
-
-      // Create ZIP
-      setTransactionStatus?.('Creating ZIP package...');
-      const archiveBlob = await createQueryPackageArchive(
-        queryFileContent,
-        supportingFiles,
-        ipfsCids,
-        manifest
-      );
-
-      // Upload to server => get CID
-      setTransactionStatus?.('Uploading ZIP to server...');
-      const cid = await uploadToServer(archiveBlob, setUploadProgress);
-      setCurrentCid?.(cid);
-
-      // Now send the request to the contract
-      setTransactionStatus?.('Sending transaction...');
-      await requestAIEvaluation(contract, cid, setTransactionStatus);
-
-      // Poll for results
-      await pollForEvaluationResults(
-        contract,
-        cid,
-        setTransactionStatus,
-        setOutcomes,
-        setJustification,
-        setResultCid,
-        setResultTimestamp
-      );
-      break;
-    }
-
-    case 'file': {
-      if (!queryPackageFile) {
-        throw new Error('No query package file provided');
-      }
-      setTransactionStatus?.('Uploading file to server...');
-      const cid = await uploadToServer(queryPackageFile, setUploadProgress);
-      setCurrentCid?.(cid);
-
-      setTransactionStatus?.('Sending transaction...');
-      await requestAIEvaluation(contract, cid, setTransactionStatus);
-
-      await pollForEvaluationResults(
-        contract,
-        cid,
-        setTransactionStatus,
-        setOutcomes,
-        setJustification,
-        setResultCid,
-        setResultTimestamp
-      );
-      break;
-    }
-
-    case 'ipfs': {
-      if (!queryPackageCid) {
-        throw new Error('No queryPackageCid provided');
-      }
-      setCurrentCid?.(queryPackageCid);
-
-      setTransactionStatus?.('Sending transaction...');
-      await requestAIEvaluation(contract, queryPackageCid, setTransactionStatus);
-
-      await pollForEvaluationResults(
-        contract,
-        queryPackageCid,
-        setTransactionStatus,
-        setOutcomes,
-        setJustification,
-        setResultCid,
-        setResultTimestamp
-      );
-      break;
-    }
-
-    default:
-      throw new Error(`Invalid method: ${selectedMethod}`);
-  }
-
-  setTransactionStatus?.('');
-}
-
-// ------------------
-// Internal Helpers
-// ------------------
-
-/**
- * Calls contract.requestAIEvaluation([cid]) and waits for confirmation.
- */
-async function requestAIEvaluation(contract, cid, setTransactionStatus) {
-  const tx = await contract.requestAIEvaluation([cid], {
-    gasLimit: 1000000,
-    value: 0
-  });
-  console.log('Transaction sent:', tx);
-  setTransactionStatus?.('Waiting for confirmation...');
-  const receipt = await tx.wait();
-  console.log('Transaction confirmed:', receipt);
-
-  if (!receipt.logs?.length) {
-    throw new Error('No logs in transaction receipt');
-  }
-  // We do not extract requestId here; we handle that in pollForEvaluationResults below
-}
-
-/**
- * Polls the contract for results (using getEvaluation(requestId)) and fetches justification from
- * /api/fetch/:cid (via fetchWithRetry).
- */
-async function pollForEvaluationResults(
-  contract,
-  cidUsed,
-  setTransactionStatus,
-  setOutcomes,
-  setJustification,
-  setResultCid,
-  setResultTimestamp
-) {
-  setTransactionStatus?.('Waiting for evaluation results...');
-
-  // 1) Figure out the requestId from logs. Because the contract logs `RequestAIEvaluation(bytes32 requestId, string[] cids)`,
-  // we can find a log with cids[] == [cidUsed].
-  const filter = contract.filters.RequestAIEvaluation(null, [cidUsed]);
-  const logs = await contract.provider.getLogs({
-    fromBlock: 0,
-    toBlock: 'latest',
-    address: contract.target,
-    topics: filter.topics
-  });
-  if (!logs?.length) {
-    throw new Error('RequestAIEvaluation event not found for cid: ' + cidUsed);
-  }
-
-  let requestId;
-  for (const log of logs) {
-    try {
-      const parsed = contract.interface.parseLog({ data: log.data, topics: log.topics });
-      if (parsed.name === 'RequestAIEvaluation') {
-        // We have a match
-        requestId = parsed.args.requestId;
-        break;
-      }
-    } catch (err) {
-      // skip logs that don't parse
-    }
-  }
-  if (!requestId) {
-    throw new Error('Failed to parse requestId from contract logs');
-  }
-
-  // 2) Poll up to X times
-  let attempts = 0;
-  const maxAttempts = 60;
-  let foundEvaluation = null;
-
-  while (!foundEvaluation && attempts < maxAttempts) {
-    attempts++;
-    try {
-      const result = await contract.getEvaluation(requestId);
-      // result = [ likelihoods, justificationCID, exists ]
-      const [likelihoods, justificationCid, exists] = result;
-      if (exists && likelihoods?.length > 0) {
-        foundEvaluation = result;
-        break;
-      }
-    } catch (err) {
-      console.error('Polling error:', err);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-  }
-  if (!foundEvaluation) {
-    throw new Error('Evaluation results not received in time');
-  }
-
-  const [likelihoods, justificationCid] = foundEvaluation;
-  setOutcomes?.(likelihoods.map(Number)); // Convert BN => JS number
-  setJustification?.('Loading justification...');
-  setResultCid?.(justificationCid);
-
-  // 3) Fetch justification from your server route: /api/fetch/:cid
-  setTransactionStatus?.('Fetching justification from server...');
-  try {
-    const response = await fetchWithRetry(justificationCid);
-    const justificationText = await tryParseJustification(
-      response,
-      justificationCid,
-      setOutcomes,
-      setResultTimestamp
-    );
-    setJustification?.(justificationText);
-  } catch (error) {
-    console.error('Justification fetch error:', error);
-    setJustification?.(`Error loading justification: ${error.message}`);
   }
 }

@@ -1,9 +1,114 @@
 // src/pages/RunQuery.js
 import React, { useState } from 'react';
+import { ethers } from 'ethers';
 import { PAGES } from '../App';
+import { fetchWithRetry, tryParseJustification } from '../utils/fetchUtils';
+import { createQueryPackageArchive } from '../utils/packageUtils';
+import { uploadToServer } from '../utils/serverUtils';
+import { getAugmentedQueryText } from '../utils/queryUtils';
 import {
-  runQueryOnContract // A hypothetical helper you might implement in contractUtils
+  CONTRACT_ABI,
+  switchToBaseSepolia,
+  checkContractFunding,
 } from '../utils/contractUtils';
+
+// Default query package CID for example/testing
+const DEFAULT_QUERY_CID = 'QmSnynnZVufbeb9GVNLBjxBJ45FyHgjPYUHTvMK5VmQZcS';
+
+// Helper function to request AI evaluation and get requestId
+async function requestAIEvaluation(contract, cid, setTransactionStatus) {
+  const tx = await contract.requestAIEvaluation([cid], {
+    gasLimit: 1000000,
+    value: 0
+  });
+  console.log('Transaction sent:', tx);
+  setTransactionStatus?.('Waiting for confirmation...');
+  const receipt = await tx.wait();
+  console.log('Transaction confirmed:', receipt);
+
+  if (!receipt.logs?.length) {
+    throw new Error('No logs in transaction receipt');
+  }
+
+  // Find the RequestAIEvaluation event in the receipt
+  const event = receipt.logs
+    .map(log => {
+      try {
+        return contract.interface.parseLog({ 
+          topics: log.topics, 
+          data: log.data 
+        });
+      } catch (e) {
+        return null;
+      }
+    })
+    .find(parsed => parsed && parsed.name === 'RequestAIEvaluation');
+
+  if (!event) {
+    throw new Error('RequestAIEvaluation event not found in transaction receipt');
+  }
+
+  return event.args.requestId;
+}
+
+// Helper function to poll for evaluation results
+async function pollForEvaluationResults(
+  contract,
+  requestId,
+  setTransactionStatus,
+  setOutcomes,
+  setJustification,
+  setResultCid,
+  setResultTimestamp,
+  setOutcomeLabels
+) {
+  setTransactionStatus?.('Waiting for evaluation results...');
+
+  // Poll for results
+  let attempts = 0;
+  const maxAttempts = 60;
+  let foundEvaluation = null;
+
+  while (!foundEvaluation && attempts < maxAttempts) {
+    attempts++;
+    try {
+      const result = await contract.getEvaluation(requestId);
+      const [likelihoods, justificationCid, exists] = result;
+      if (exists && likelihoods?.length > 0) {
+        foundEvaluation = result;
+        break;
+      }
+    } catch (err) {
+      console.error('Polling error:', err);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+  if (!foundEvaluation) {
+    throw new Error('Evaluation results not received in time');
+  }
+
+  const [likelihoods, justificationCid] = foundEvaluation;
+  setOutcomes?.(likelihoods.map(Number));
+  setJustification?.('Loading justification...');
+  setResultCid?.(justificationCid);
+
+  // Fetch justification
+  setTransactionStatus?.('Fetching justification from server...');
+  try {
+    const response = await fetchWithRetry(justificationCid);
+    const justificationText = await tryParseJustification(
+      response,
+      justificationCid,
+      setOutcomes,
+      setResultTimestamp,
+      setOutcomeLabels
+    );
+    setJustification?.(justificationText);
+  } catch (error) {
+    console.error('Justification fetch error:', error);
+    setJustification?.(`Error loading justification: ${error.message}`);
+  }
+}
 
 function RunQuery({
   queryText,
@@ -33,7 +138,9 @@ function RunQuery({
   setJustification,
   setOutcomes,
   setResultTimestamp,
-  setCurrentPage
+  setCurrentPage,
+  hyperlinks,
+  setOutcomeLabels
 }) {
   const [activeTooltipId, setActiveTooltipId] = useState(null);
 
@@ -51,37 +158,131 @@ function RunQuery({
       alert('Please connect your wallet first');
       return;
     }
+
     try {
       setLoadingResults(true);
       setTransactionStatus('Processing...');
-      // This is where you'd either call your original logic from `App.js`
-      // or call a helper function that does the same steps:
-      //   1) Possibly upload file to IPFS
-      //   2) Send transaction to contract
-      //   3) Poll for results
-      //   4) Set outcomes/justification in state
 
-      // This example just demonstrates a placeholder call:
-      await runQueryOnContract({
-        selectedMethod,
-        queryText,
-        outcomeLabels,
-        supportingFiles,
-        ipfsCids,
-        juryNodes,
-        iterations,
-        queryPackageFile,
-        queryPackageCid,
-        contractAddress,
-        setTransactionStatus,
-        setOutcomes,
-        setJustification,
-        setResultCid,
-        setResultTimestamp,
-        setCurrentCid,
-        setPackageDetails,
-        setUploadProgress
-      });
+      // 1) Connect + switch to Base Sepolia
+      let provider = new ethers.BrowserProvider(window.ethereum);
+      provider = await switchToBaseSepolia(provider);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
+
+      // 2) Check contract funding
+      setTransactionStatus?.('Checking contract funding...');
+      await checkContractFunding(contract, provider);
+
+      // 3) Different logic per method
+      switch (selectedMethod) {
+        case 'config': {
+          // Build + upload from current config
+          setTransactionStatus?.('Building archive from config...');
+          const manifest = {
+            version: '1.0',
+            primary: { filename: 'primary_query.json' },
+            juryParameters: {
+              NUMBER_OF_OUTCOMES: outcomeLabels.length,
+              AI_NODES: juryNodes.map((node) => ({
+                AI_PROVIDER: node.provider,
+                AI_MODEL: node.model,
+                NO_COUNTS: node.runs,
+                WEIGHT: node.weight
+              })),
+              ITERATIONS: iterations
+            }
+          };
+
+          // Primary query JSON with hyperlinks
+          const augmentedQueryText = getAugmentedQueryText(queryText, hyperlinks);
+          const queryFileContent = {
+            query: augmentedQueryText,
+            references: [
+              ...supportingFiles.map((_, i) => `supportingFile${i + 1}`),
+              ...ipfsCids.map((c) => c.name)
+            ],
+            outcomes: outcomeLabels
+          };
+
+          // Create ZIP
+          setTransactionStatus?.('Creating ZIP package...');
+          const archiveBlob = await createQueryPackageArchive(
+            queryFileContent,
+            supportingFiles,
+            ipfsCids,
+            manifest
+          );
+
+          // Upload to server => get CID
+          setTransactionStatus?.('Uploading ZIP to server...');
+          const cid = await uploadToServer(archiveBlob, setUploadProgress);
+          setCurrentCid?.(cid);
+
+          // Send request to contract and get requestId
+          setTransactionStatus?.('Sending transaction...');
+          const requestId = await requestAIEvaluation(contract, cid, setTransactionStatus);
+
+          // Poll for results using requestId
+          await pollForEvaluationResults(
+            contract,
+            requestId,
+            setTransactionStatus,
+            setOutcomes,
+            setJustification,
+            setResultCid,
+            setResultTimestamp,
+            setOutcomeLabels
+          );
+          break;
+        }
+
+        case 'file': {
+          if (!queryPackageFile) {
+            throw new Error('No query package file provided');
+          }
+          setTransactionStatus?.('Uploading file to server...');
+          const cid = await uploadToServer(queryPackageFile, setUploadProgress);
+          setCurrentCid?.(cid);
+
+          setTransactionStatus?.('Sending transaction...');
+          const requestId = await requestAIEvaluation(contract, cid, setTransactionStatus);
+
+          await pollForEvaluationResults(
+            contract,
+            requestId,
+            setTransactionStatus,
+            setOutcomes,
+            setJustification,
+            setResultCid,
+            setResultTimestamp,
+            setOutcomeLabels
+          );
+          break;
+        }
+
+        case 'ipfs': {
+          const cidToUse = queryPackageCid.trim() || DEFAULT_QUERY_CID;
+          setCurrentCid?.(cidToUse);
+
+          setTransactionStatus?.('Sending transaction...');
+          const requestId = await requestAIEvaluation(contract, cidToUse, setTransactionStatus);
+
+          await pollForEvaluationResults(
+            contract,
+            requestId,
+            setTransactionStatus,
+            setOutcomes,
+            setJustification,
+            setResultCid,
+            setResultTimestamp,
+            setOutcomeLabels
+          );
+          break;
+        }
+
+        default:
+          throw new Error(`Invalid method: ${selectedMethod}`);
+      }
 
       // If successful, go to the RESULTS page
       setTransactionStatus('');
@@ -156,6 +357,23 @@ function RunQuery({
                 <p>
                   <strong>Iterations:</strong> {iterations}
                 </p>
+                {hyperlinks && hyperlinks.length > 0 && (
+                  <div>
+                    <strong>Reference URLs:</strong>
+                    <ul>
+                      {hyperlinks.map((link, index) => (
+                        <li key={index}>
+                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="url-value">
+                            {link.url}
+                          </a>
+                          {link.description && (
+                            <span className="url-description">- {link.description}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -187,10 +405,11 @@ function RunQuery({
 
           {selectedMethod === 'ipfs' && (
             <div className="cid-input">
+              <label>Enter Query Package CID</label>
               <input
                 type="text"
-                placeholder="Enter Query Package CID"
-                value={queryPackageCid}
+                className={!queryPackageCid ? 'default-value' : ''}
+                value={queryPackageCid || DEFAULT_QUERY_CID}
                 onChange={(e) => setQueryPackageCid(e.target.value)}
               />
             </div>
@@ -203,8 +422,7 @@ function RunQuery({
             onClick={handleRunQuery}
             disabled={
               loadingResults ||
-              (selectedMethod === 'file' && !queryPackageFile) ||
-              (selectedMethod === 'ipfs' && !queryPackageCid.trim())
+              (selectedMethod === 'file' && !queryPackageFile)
             }
           >
             {loadingResults ? (

@@ -13,6 +13,10 @@ function QueryDefinition({
   setIpfsCids,
   cidInput,
   setCidInput,
+  hyperlinks,
+  setHyperlinks,
+  linkInput,
+  setLinkInput,
   setCurrentPage
 }) {
   const [activeTooltipId, setActiveTooltipId] = useState(null);
@@ -235,6 +239,95 @@ function QueryDefinition({
                     <button
                       onClick={() =>
                         setIpfsCids((prev) => prev.filter((_, i) => i !== index))
+                      }
+                      className="remove-button"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="form-group">
+          <div className="label-with-tooltip">
+            <label>Add Reference URLs</label>
+            <div
+              className="tooltip-trigger"
+              onMouseEnter={() => setActiveTooltipId('urls')}
+              onMouseLeave={() => setActiveTooltipId(null)}
+            >
+              ⓘ
+              {activeTooltipId === 'urls' && (
+                <div className="tooltip-content">
+                  Add URLs to online resources that the AI Jury should consider when evaluating the query.
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="url-input-group">
+            <input
+              type="text"
+              value={linkInput}
+              onChange={(e) => setLinkInput(e.target.value)}
+              placeholder="Enter URL (https://...)..."
+              className="url-input"
+            />
+            <button
+              onClick={() => {
+                if (linkInput.trim()) {
+                  try {
+                    // Basic URL validation
+                    new URL(linkInput.trim());
+                    const newUrl = {
+                      url: linkInput.trim(),
+                      description: '',
+                      id: Date.now() + Math.random()
+                    };
+                    setHyperlinks((prev) => [...prev, newUrl]);
+                    setLinkInput('');
+                  } catch (e) {
+                    alert('Please enter a valid URL including http:// or https://');
+                  }
+                }
+              }}
+            >
+              Add URL
+            </button>
+          </div>
+
+          {hyperlinks.length > 0 && (
+            <ul className="url-list">
+              {hyperlinks.map((urlObj, index) => (
+                <li key={urlObj.id}>
+                  <div className="url-entry">
+                    <a 
+                      href={urlObj.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="url-value"
+                    >
+                      {urlObj.url}
+                    </a>
+                    <input
+                      type="text"
+                      placeholder="Add description..."
+                      value={urlObj.description}
+                      onChange={(evt) => {
+                        const updated = hyperlinks.map((item, i) =>
+                          i === index
+                            ? { ...item, description: evt.target.value }
+                            : item
+                        );
+                        setHyperlinks(updated);
+                      }}
+                      className="description-input"
+                    />
+                    <button
+                      onClick={() =>
+                        setHyperlinks((prev) => prev.filter((_, i) => i !== index))
                       }
                       className="remove-button"
                     >

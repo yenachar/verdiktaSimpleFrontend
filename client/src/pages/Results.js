@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { PAGES } from '../App';
 import { Bar } from 'react-chartjs-2';
 import PaginatedJustification from '../components/paginatedJustification';
+import { fetchWithRetry, tryParseJustification } from '../utils/fetchUtils';
 
 function Results({
   queryText,
@@ -24,9 +25,21 @@ function Results({
   setOutcomeLabels
 }) {
   const handleLoadResults = async (cid) => {
-    // If you want to re-load results from some CIP
-    // For now just a stub
-    console.log('Loading results for CID:', cid);
+    try {
+      console.log('Loading results for CID:', cid);
+      const response = await fetchWithRetry(cid);
+      const justificationText = await tryParseJustification(
+        response,
+        cid,
+        setOutcomes,
+        setResultTimestamp,
+        setOutcomeLabels
+      );
+      setJustification(justificationText);
+    } catch (error) {
+      console.error('Error loading results:', error);
+      setJustification(`Error loading justification: ${error.message}`);
+    }
   };
 
   const renderBarGraph = () => {
@@ -198,13 +211,21 @@ function Results({
           <div className="justification">
             <h3>AI Jury Justification</h3>
             <div className="justification-content">
-              {/* PaginatedJustification if you want to load large justifications in pages */}
               <PaginatedJustification
                 resultCid={resultCid}
                 initialText={justification}
-                onFetchComplete={(fullText) => setJustification(fullText)}
-                onUpdateOutcomes={(newOutcomes) => setOutcomes(newOutcomes)}
-                onUpdateTimestamp={(ts) => setResultTimestamp(ts)}
+                onFetchComplete={(text) => {
+                  console.log('Justification fetch complete:', text?.substring(0, 100) + '...');
+                  setJustification(text);
+                }}
+                onUpdateOutcomes={(newOutcomes) => {
+                  console.log('Updating outcomes:', newOutcomes);
+                  setOutcomes(newOutcomes);
+                }}
+                onUpdateTimestamp={(ts) => {
+                  console.log('Updating timestamp:', ts);
+                  setResultTimestamp(ts);
+                }}
                 setOutcomeLabels={setOutcomeLabels}
               />
             </div>

@@ -8,7 +8,8 @@ function JurySelection({
   setJuryNodes,
   iterations,
   setIterations,
-  setCurrentPage
+  setCurrentPage,
+  setSelectedMethod
 }) {
   const [activeTooltipId, setActiveTooltipId] = useState(null);
 
@@ -244,7 +245,10 @@ function JurySelection({
         </button>
         <button
           className="primary"
-          onClick={() => setCurrentPage(PAGES.RUN)}
+          onClick={() => {
+            setSelectedMethod('config');
+            setCurrentPage(PAGES.RUN);
+          }}
           disabled={juryNodes.length === 0}
         >
           Next: Run Query
