@@ -16,7 +16,8 @@ const fetchWithRetry = async (cid, retries = 3, delay = 2000) => {
     throw new Error('CID is required for fetching data');
   }
 
-  const url = `${SERVER_URL}/api/fetch/${cid.trim()}`;
+  const baseUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
+  const url = `${baseUrl}/api/fetch/${cid.trim()}`;
 
   for (let i = 0; i < retries; i++) {
     try {
