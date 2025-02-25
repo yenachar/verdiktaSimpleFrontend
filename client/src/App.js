@@ -52,7 +52,9 @@ const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:5000';
 const fetchQueryPackageDetails = async (cid) => {
   try {
     console.log('Fetching query package:', cid);
-    const response = await fetch(`${SERVER_URL}/api/fetch/${cid}`);
+    // Fix the URL to prevent double slashes
+    const baseUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
+    const response = await fetch(`${baseUrl}/api/fetch/${cid}`);
     
     if (!response.ok) {
       const errorData = await response.json();

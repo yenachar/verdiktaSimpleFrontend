@@ -13,8 +13,10 @@ export const uploadToServer = async (file, setUploadProgress) => {
   formData.append('file', file);
 
   try {
-    console.log(`Attempting to connect to server at: ${SERVER_URL}`);
-    const response = await fetch(`${SERVER_URL}/api/upload`, {
+    // Fix the URL to prevent double slashes
+    const baseUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
+    console.log(`Attempting to connect to server at: ${baseUrl}`);
+    const response = await fetch(`${baseUrl}/api/upload`, {
       method: 'POST',
       body: formData,
       mode: 'cors',
