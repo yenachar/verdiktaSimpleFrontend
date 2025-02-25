@@ -1122,6 +1122,17 @@ button.large {
   color: var(--color-text-light);
 }
 
+/* Style for the Manage Contracts option */
+.contract-select option[value="manage"] {
+  font-weight: bold !important;
+  color: var(--color-accent-blue) !important;
+  background-color: rgba(0, 163, 255, 0.2) !important;
+  padding: 8px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.3) !important;
+  margin-top: 8px !important;
+  text-shadow: 0 0 1px rgba(0, 163, 255, 0.5) !important;
+}
+
 /* Update existing media query */
 @media (max-width: 768px) {
   .contract-wallet-section {
@@ -1391,4 +1402,275 @@ button.large {
 .default-cid-info small {
   display: block;
   line-height: 1.4;
+}
+
+/* Contract Management Page Styles */
+.contract-management-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.add-contract-card, .contract-list-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  padding: 20px;
+}
+
+.contract-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.contract-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+  background-color: #f9f9f9;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  min-height: 60px;
+}
+
+.contract-item:hover {
+  background-color: #f0f0f0;
+}
+
+.contract-item:last-child {
+  border-bottom: none;
+}
+
+.contract-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 250px;
+  margin-right: 20px;
+}
+
+.contract-name {
+  font-weight: 600;
+  color: #333;
+}
+
+.contract-address {
+  display: inline-block;
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  word-break: break-all;
+  font-family: monospace;
+  color: #555;
+  max-width: fit-content;
+  line-height: 1.5;
+}
+
+.contract-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  align-self: center;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.edit-button, .delete-button {
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-button {
+  background-color: #e6f7ff;
+  color: #1890ff;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+  min-width: 50px;
+}
+
+.edit-button:hover {
+  background-color: #bae7ff;
+}
+
+.delete-button {
+  background-color: rgba(255, 0, 0, 0.08);
+  color: #f5222d;
+  font-weight: bold;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  padding: 0;
+}
+
+.delete-button:hover {
+  background-color: rgba(255, 0, 0, 0.15);
+}
+
+.loading-message, .empty-message {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+}
+
+.error-message {
+  text-align: center;
+  padding: 20px;
+  color: #f5222d;
+}
+
+.add-button {
+  background-color: #52c41a;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.add-button:hover {
+  background-color: #389e0d;
+}
+
+.save-button {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.save-button:hover {
+  background-color: #096dd9;
+}
+
+.form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-weight: 500;
+  color: #333;
+}
+
+.input-field {
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.input-field:focus {
+  border-color: #40a9ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.input-field.disabled {
+  background-color: #f5f5f5;
+  color: #595959;
+  cursor: not-allowed;
+}
+
+.edit-form {
+  width: 100%;
+  padding: 12px;
+  background-color: #fafafa;
+  border-radius: 6px;
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+@media (max-width: 768px) {
+  .contract-item {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 16px;
+  }
+  
+  .contract-info {
+    margin-right: 0;
+    margin-bottom: 15px;
+    width: 100%;
+  }
+  
+  .contract-actions {
+    margin-top: 10px;
+    align-self: flex-end;
+    margin-left: 0;
+  }
+
+  .contract-address {
+    max-width: 100%;
+    word-break: break-all;
+  }
+}
+
+/* Small button for adding contracts */
+.small-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 8px;
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.small-button:hover {
+  background-color: var(--color-primary-dark);
+}
+
+.small-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.refresh-button {
+  font-size: 14px;
+}
+
+/* Add a spinning animation for the refresh button when loading */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.refresh-button:disabled {
+  animation: spin 1.5s linear infinite;
 }

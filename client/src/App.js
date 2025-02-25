@@ -19,10 +19,14 @@ import {
 } from './utils/contractUtils';
 import { fetchWithRetry, tryParseJustification } from './utils/fetchUtils';
 import { getAugmentedQueryText } from './utils/queryUtils';
+import { fetchContracts } from './utils/contractManagementService';
 import RunQuery from './pages/RunQuery';
 import JurySelection from './pages/JurySelection';
 import QueryDefinition from './pages/QueryDefinition';
 import Results from './pages/Results';
+import ContractManagement from './pages/ContractManagement';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 // Register Chart.js components
 Chart.register(CategoryScale, LinearScale, BarElement);
@@ -32,18 +36,9 @@ export const PAGES = {
   DEFINE_QUERY: 'DEFINE_QUERY',
   JURY_SELECTION: 'JURY_SELECTION',
   RUN: 'RUN',
-  RESULTS: 'RESULTS'
+  RESULTS: 'RESULTS',
+  CONTRACT_MANAGEMENT: 'CONTRACT_MANAGEMENT'
 };
-
-// Add near the top with other constants
-const CONTRACT_ADDRESSES = (process.env.REACT_APP_CONTRACT_ADDRESSES || '').split(',');
-const CONTRACT_NAMES = (process.env.REACT_APP_CONTRACT_NAMES || '').split(',');
-
-// Create a mapping of addresses to names
-const CONTRACT_OPTIONS = CONTRACT_ADDRESSES.map((address, index) => ({
-  address,
-  name: CONTRACT_NAMES[index] || `Contract ${index + 1}`
-}));
 
 // Replace the SERVER_URL constant with one that reads from env
 const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:5000';
@@ -160,7 +155,7 @@ function App() {
 
   const [isConnected, setIsConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
-  const [contractAddress, setContractAddress] = useState(CONTRACT_ADDRESSES[0] || '0x2E67c4D565C55E31514eDd68E42bFBb50a2C49F1');
+  const [contractAddress, setContractAddress] = useState('');
 
   // Add new state for transaction status
   const [transactionStatus, setTransactionStatus] = useState('');
@@ -177,6 +172,58 @@ function App() {
   // Add new state variables after other state declarations
   const [hyperlinks, setHyperlinks] = useState([]);
   const [linkInput, setLinkInput] = useState('');
+
+  // State for contracts
+  const [contractOptions, setContractOptions] = useState([]);
+  const [isLoadingContracts, setIsLoadingContracts] = useState(true);
+
+  // Load contracts from API on mount
+  useEffect(() => {
+    loadContracts();
+  }, []);
+
+  // Add a useEffect to handle resetting the dropdown after navigating to Contract Management page
+  useEffect(() => {
+    // When returning from Contract Management page, make sure the dropdown value is reset 
+    // to an actual contract instead of staying on "manage"
+    if (currentPage !== PAGES.CONTRACT_MANAGEMENT && contractAddress === "manage" && contractOptions.length > 0) {
+      setContractAddress(contractOptions[0].address);
+    }
+  }, [currentPage, contractAddress, contractOptions]);
+
+  // Function to load contracts from the API
+  const loadContracts = async () => {
+    setIsLoadingContracts(true);
+    try {
+      const contracts = await fetchContracts();
+      setContractOptions(contracts);
+      
+      // Set default contract if available or reset from "manage" value
+      if (contracts.length > 0 && (!contractAddress || contractAddress === "manage")) {
+        setContractAddress(contracts[0].address);
+      }
+    } catch (error) {
+      console.error('Failed to load contracts:', error);
+      // Fall back to environment variables if API fails
+      const CONTRACT_ADDRESSES = (process.env.REACT_APP_CONTRACT_ADDRESSES || '').split(',');
+      const CONTRACT_NAMES = (process.env.REACT_APP_CONTRACT_NAMES || '').split(',');
+      
+      const fallbackOptions = CONTRACT_ADDRESSES.map((address, index) => ({
+        address,
+        name: CONTRACT_NAMES[index] || `Contract ${index + 1}`
+      })).filter(c => c.address);
+      
+      setContractOptions(fallbackOptions);
+      
+      if (fallbackOptions.length > 0 && !contractAddress) {
+        setContractAddress(fallbackOptions[0].address);
+      }
+      
+      toast.error('Failed to load contracts from server. Using fallback values.');
+    } finally {
+      setIsLoadingContracts(false);
+    }
+  };
 
   // Add effect to fetch package details when currentCid changes
   useEffect(() => {
@@ -264,15 +311,52 @@ function App() {
         <div className="contract-selector">
           <select
             value={contractAddress}
-            onChange={(e) => setContractAddress(e.target.value)}
+            onChange={(e) => {
+              // Special handling for the manage contracts option
+              if (e.target.value === "manage") {
+                setCurrentPage(PAGES.CONTRACT_MANAGEMENT);
+              } else {
+                setContractAddress(e.target.value);
+              }
+            }}
             className="contract-select"
+            disabled={isLoadingContracts}
           >
-            {CONTRACT_OPTIONS.map((contract, index) => (
-              <option key={index} value={contract.address}>
-                {contract.name}
-              </option>
-            ))}
+            {isLoadingContracts ? (
+              <option>Loading contracts...</option>
+            ) : contractOptions.length === 0 ? (
+              <option value="">No contracts available</option>
+            ) : (
+              <>
+                {contractOptions.map((contract) => (
+                  <option key={contract.address} value={contract.address}>
+                    {contract.name}
+                  </option>
+                ))}
+                {/* Add a visual separator before Manage Contracts option */}
+                <option disabled style={{ borderTop: '1px solid #444', margin: '0', padding: '0', height: '1px', opacity: '0.5', overflow: 'hidden' }}>──────────</option>
+                {/* Add Manage Contracts as the last option in the dropdown */}
+                <option value="manage">Manage Contracts</option>
+              </>
+            )}
           </select>
+          {contractOptions.length === 0 && !isLoadingContracts && (
+            <button
+              className="small-button"
+              onClick={() => setCurrentPage(PAGES.CONTRACT_MANAGEMENT)}
+              title="Add contracts"
+            >
+              +
+            </button>
+          )}
+          <button
+            className="small-button refresh-button"
+            onClick={loadContracts}
+            title="Refresh contracts"
+            disabled={isLoadingContracts}
+          >
+            ↻
+          </button>
         </div>
         <div className="wallet-connection">
           {isConnected ? (
@@ -382,7 +466,11 @@ function App() {
                   setOutcomeLabels={setOutcomeLabels}
                 />
         )}
+        {currentPage === PAGES.CONTRACT_MANAGEMENT && (
+          <ContractManagement onContractsUpdated={loadContracts} />
+        )}
       </main>
+      <ToastContainer position="bottom-right" />
     </div>
   );
 }

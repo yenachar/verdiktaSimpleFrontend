@@ -8,6 +8,8 @@ require('dotenv').config();
 
 const app = express();
 const ipfsClient = require('./services/ipfsClient');
+// Import contract routes
+const contractRoutes = require('./routes/contractRoutes');
 
 // Constants
 const UPLOAD_TIMEOUT = 60000; // 60 seconds
@@ -81,6 +83,9 @@ const initializeTmpDirectory = async () => {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Register contract routes
+app.use('/api/contracts', contractRoutes);
 
 // File upload endpoint with timeout
 app.post('/api/upload', async (req, res) => {
