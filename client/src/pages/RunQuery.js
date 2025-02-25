@@ -289,8 +289,24 @@ function RunQuery({
       setCurrentPage(PAGES.RESULTS);
     } catch (error) {
       console.error('Error running query:', error);
-      setTransactionStatus(`Error: ${error.message}`);
-      alert('An error occurred while processing the query. Check the console for details.');
+      
+      // Check if the error is related to insufficient LINK tokens
+      if (error.message.includes('Insufficient LINK tokens')) {
+        const errorMessage = `Contract doesn't have enough LINK tokens to perform this operation. 
+        
+This is a blockchain operation that requires LINK tokens to pay for the AI jury service. Please contact the administrator to fund the contract with LINK tokens.`;
+        
+        setTransactionStatus(`Error: Insufficient LINK tokens`);
+        alert(errorMessage);
+      } else if (error.message.includes('User rejected')) {
+        // User rejected the transaction in their wallet
+        setTransactionStatus(`Error: Transaction rejected`);
+        alert('You rejected the transaction in your wallet. Please try again and approve the transaction.');
+      } else {
+        // Generic error handling for other errors
+        setTransactionStatus(`Error: ${error.message}`);
+        alert('An error occurred while processing the query. Check the console for details.');
+      }
     } finally {
       setLoadingResults(false);
     }
