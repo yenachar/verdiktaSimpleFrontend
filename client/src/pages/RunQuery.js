@@ -18,7 +18,7 @@ const DEFAULT_QUERY_CID = 'QmSnynnZVufbeb9GVNLBjxBJ45FyHgjPYUHTvMK5VmQZcS';
 // Helper function to request AI evaluation and get requestId
 async function requestAIEvaluation(contract, cid, setTransactionStatus) {
   const tx = await contract.requestAIEvaluation([cid], {
-    gasLimit: 1000000,
+    gasLimit: 5000000,
     value: 0
   });
   console.log('Transaction sent:', tx);
