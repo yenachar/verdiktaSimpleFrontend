@@ -19,7 +19,15 @@
     {
       "address": "0xff46828DE968bff707713f5a402fd5E155345864",
       "name": "ReputationBasedAggregator1"
+    },
+    {
+      "address": "0x33AeEdAf3238C9eF56e80db30169ea21ed19Cca8",
+      "name": "New"
+    },
+    {
+      "address": "0x86D7fEe6B45fBa97Fe6cb096E76B1503D2b5cea4",
+      "name": "NewSimple"
     }
   ],
-  "lastUpdated": "2025-02-25T23:13:56.505Z"
+  "lastUpdated": "2025-03-13T16:56:19.642Z"
 }
