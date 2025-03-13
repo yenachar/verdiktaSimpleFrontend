@@ -1,10 +1,11 @@
+/* global BigInt */
 // src/App.js
 
 import React, { useState, useEffect } from 'react';
 import { Chart, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import './App.css';
-import { ethers } from 'ethers';
+import { ethers, parseEther } from 'ethers'; // ethers v6 import
 import FormData from 'form-data';
 import archiveService from './utils/archiveService';
 import manifestParser from './utils/manifestParser';
@@ -40,14 +41,12 @@ export const PAGES = {
   CONTRACT_MANAGEMENT: 'CONTRACT_MANAGEMENT'
 };
 
-// Replace the SERVER_URL constant with one that reads from env
 const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:5000';
 
-// Update the fetchQueryPackageDetails function
+// fetchQueryPackageDetails function remains unchanged
 const fetchQueryPackageDetails = async (cid) => {
   try {
     console.log('Fetching query package:', cid);
-    // Fix the URL to prevent double slashes
     const baseUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
     const response = await fetch(`${baseUrl}/api/fetch/${cid}`);
     
@@ -64,12 +63,10 @@ const fetchQueryPackageDetails = async (cid) => {
 
     const archiveFile = new File([blob], 'query_package.zip', { type: 'application/zip' });
     
-    // Extract the archive
     console.log('Extracting archive...');
     const files = await archiveService.extractArchive(archiveFile);
     console.log('Extracted files:', files.map(f => f.name));
     
-    // Find and parse the manifest
     const manifestFile = files.find(file => file.name === 'manifest.json');
     if (!manifestFile) {
       throw new Error('No manifest.json found in archive');
@@ -79,7 +76,6 @@ const fetchQueryPackageDetails = async (cid) => {
     const manifest = JSON.parse(manifestContent);
     console.log('Parsed manifest:', manifest);
 
-    // Find and parse the primary query file
     const primaryFile = files.find(file => file.name === manifest.primary.filename);
     if (!primaryFile) {
       throw new Error('Primary file not found in archive');
@@ -113,7 +109,7 @@ function App() {
   const [ipfsCids, setIpfsCids] = useState([]);
   const [cidInput, setCidInput] = useState('');
 
-  // Add new state for outcomes vector
+  // Outcomes state
   const [outcomeLabels, setOutcomeLabels] = useState(['True', 'False']);
   
   // Jury Selection state
@@ -123,7 +119,7 @@ function App() {
     model: 'gpt-4o',
     runs: 1,
     weight: 1.0,
-    id: Date.now() // unique ID for each node
+    id: Date.now()
   }]);
   
   // Results state
@@ -139,93 +135,76 @@ function App() {
   );
   const [outcomes, setOutcomes] = useState([400000, 600000]);
 
-  // Add these new state variables for the Results page
+  // Additional results state
   const [lookupCid, setLookupCid] = useState('');
   const [loadingResults, setLoadingResults] = useState(false);
 
-  // Add this state near your other state declarations
+  // Other state declarations
   const [activeTooltipId, setActiveTooltipId] = useState(null);
-
   const [currentCid, setCurrentCid] = useState('');
-
-  // Add new state for the Run page
-  const [selectedMethod, setSelectedMethod] = useState('config'); // 'config', 'file', or 'ipfs'
+  // For Run page – we use "approval" so the new method is used seamlessly
+  const [selectedMethod, setSelectedMethod] = useState('approval');
   const [queryPackageFile, setQueryPackageFile] = useState(null);
   const [queryPackageCid, setQueryPackageCid] = useState('');
-
   const [isConnected, setIsConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
   const [contractAddress, setContractAddress] = useState('');
-
-  // Add new state for transaction status
   const [transactionStatus, setTransactionStatus] = useState('');
-
-  // Add new state for timestamp
   const [resultTimestamp, setResultTimestamp] = useState('');
-
-  // Add new state for upload progress
   const [uploadProgress, setUploadProgress] = useState(0);
-
-  // Add package details state at the component level
   const [packageDetails, setPackageDetails] = useState(null);
-
-  // Add new state variables after other state declarations
   const [hyperlinks, setHyperlinks] = useState([]);
   const [linkInput, setLinkInput] = useState('');
-
-  // State for contracts
   const [contractOptions, setContractOptions] = useState([]);
   const [isLoadingContracts, setIsLoadingContracts] = useState(true);
+
+  // Default aggregator parameters
+  const ALPHA = 500;
+  const MAX_FEE = parseEther("0.08"); // returns a bigint
+  const BASE_FEE_PCT = 1; // 1%
+  const ESTIMATED_BASE_COST = MAX_FEE * BigInt(BASE_FEE_PCT) / 100n; // Using native BigInt arithmetic
+  const MAX_FEE_SCALING_FACTOR = 10;
 
   // Load contracts from API on mount
   useEffect(() => {
     loadContracts();
   }, []);
 
-  // Add a useEffect to handle resetting the dropdown after navigating to Contract Management page
+  // Reset dropdown after returning from Contract Management
   useEffect(() => {
-    // When returning from Contract Management page, make sure the dropdown value is reset 
-    // to an actual contract instead of staying on "manage"
     if (currentPage !== PAGES.CONTRACT_MANAGEMENT && contractAddress === "manage" && contractOptions.length > 0) {
       setContractAddress(contractOptions[0].address);
     }
   }, [currentPage, contractAddress, contractOptions]);
 
-  // Function to load contracts from the API
+  // Function to load contracts
   const loadContracts = async () => {
     setIsLoadingContracts(true);
     try {
       const contracts = await fetchContracts();
       setContractOptions(contracts);
-      
-      // Set default contract if available or reset from "manage" value
       if (contracts.length > 0 && (!contractAddress || contractAddress === "manage")) {
         setContractAddress(contracts[0].address);
       }
     } catch (error) {
       console.error('Failed to load contracts:', error);
-      // Fall back to environment variables if API fails
       const CONTRACT_ADDRESSES = (process.env.REACT_APP_CONTRACT_ADDRESSES || '').split(',');
       const CONTRACT_NAMES = (process.env.REACT_APP_CONTRACT_NAMES || '').split(',');
-      
       const fallbackOptions = CONTRACT_ADDRESSES.map((address, index) => ({
         address,
         name: CONTRACT_NAMES[index] || `Contract ${index + 1}`
       })).filter(c => c.address);
-      
       setContractOptions(fallbackOptions);
-      
       if (fallbackOptions.length > 0 && !contractAddress) {
         setContractAddress(fallbackOptions[0].address);
       }
-      
       toast.error('Failed to load contracts from server. Using fallback values.');
     } finally {
       setIsLoadingContracts(false);
     }
   };
 
-  // Add effect to fetch package details when currentCid changes
+  // Fetch package details when currentCid changes
   useEffect(() => {
     if (currentCid) {
       console.log('Fetching package details for CID:', currentCid);
@@ -250,8 +229,6 @@ function App() {
         alert('Please install MetaMask!');
         return;
       }
-
-      console.log('MetaMask detected, requesting accounts...');
       const provider = new ethers.BrowserProvider(window.ethereum);
       const accounts = await provider.send('eth_requestAccounts', []);
       console.log('Accounts:', accounts);
@@ -259,19 +236,14 @@ function App() {
       setWalletAddress(address);
       setIsConnected(true);
       console.log('Wallet connected:', address);
-
-      // Add event listener for account changes
       window.ethereum.on('accountsChanged', (accounts) => {
         if (accounts.length === 0) {
-          // User disconnected wallet
           setIsConnected(false);
           setWalletAddress('');
         } else {
-          // User switched accounts
           setWalletAddress(accounts[0]);
         }
       });
-
     } catch (error) {
       console.error('Error connecting to MetaMask:', error);
       alert('Failed to connect to MetaMask.');
@@ -312,7 +284,6 @@ function App() {
           <select
             value={contractAddress}
             onChange={(e) => {
-              // Special handling for the manage contracts option
               if (e.target.value === "manage") {
                 setCurrentPage(PAGES.CONTRACT_MANAGEMENT);
               } else {
@@ -333,9 +304,9 @@ function App() {
                     {contract.name}
                   </option>
                 ))}
-                {/* Add a visual separator before Manage Contracts option */}
-                <option disabled style={{ borderTop: '1px solid #444', margin: '0', padding: '0', height: '1px', opacity: '0.5', overflow: 'hidden' }}>──────────</option>
-                {/* Add Manage Contracts as the last option in the dropdown */}
+                <option disabled style={{ borderTop: '1px solid #444', margin: '0', padding: '0', height: '1px', opacity: '0.5', overflow: 'hidden' }}>
+                  ──────────
+                </option>
                 <option value="manage">Manage Contracts</option>
               </>
             )}
@@ -386,8 +357,7 @@ function App() {
     />
   );
 
-  // Main render
-    return (
+  return (
     <div className="app">
       {renderHeader()}
       <main className="content">
@@ -443,6 +413,11 @@ function App() {
             setCurrentPage={setCurrentPage}
             hyperlinks={hyperlinks}
             setOutcomeLabels={setOutcomeLabels}
+            // Pass new aggregator parameters:
+            alpha={ALPHA}
+            maxFee={MAX_FEE}
+            estimatedBaseCost={ESTIMATED_BASE_COST}
+            maxFeeBasedScalingFactor={MAX_FEE_SCALING_FACTOR}
           />
         )}
         {currentPage === PAGES.RESULTS && (
@@ -451,7 +426,7 @@ function App() {
             outcomeLabels={outcomeLabels}
             outcomes={outcomes}
             justification={justification}
-                  resultCid={resultCid}
+            resultCid={resultCid}
             setResultCid={setResultCid}
             lookupCid={lookupCid}
             setLookupCid={setLookupCid}
@@ -461,10 +436,10 @@ function App() {
             currentCid={currentCid}
             setCurrentPage={setCurrentPage}
             setJustification={setJustification}
-                  setOutcomes={setOutcomes}
-                  setResultTimestamp={setResultTimestamp}
-                  setOutcomeLabels={setOutcomeLabels}
-                />
+            setOutcomes={setOutcomes}
+            setResultTimestamp={setResultTimestamp}
+            setOutcomeLabels={setOutcomeLabels}
+          />
         )}
         {currentPage === PAGES.CONTRACT_MANAGEMENT && (
           <ContractManagement onContractsUpdated={loadContracts} />
