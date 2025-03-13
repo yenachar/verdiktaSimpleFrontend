@@ -240,16 +240,9 @@ const handleRunQuery = async () => {
       const requiredApprovalAmount = maxFee*BigInt(ORACLES_TO_POLL+CLUSTER_SIZE);
       setTransactionStatus?.('Requesting LINK approval...');
 
-await approveLinkSpending(requiredApprovalAmount, provider, walletAddress, contractAddress, linkTokenAddress);
-console.log('Approval amount: ', requiredApprovalAmount.toString());  
+      await approveLinkSpending(requiredApprovalAmount, provider, walletAddress, contractAddress, linkTokenAddress);
+      console.log('Approval amount: ', requiredApprovalAmount.toString());  
       
-      const linkContract = new ethers.Contract(linkTokenAddress, LINK_TOKEN_ABI, signer);
-      console.log('Approving LINK tokens...');
-      const approveTx = await linkContract.approve(contractAddress, requiredApprovalAmount);
-      console.log("Approval transaction sent:", approveTx.hash);
-      setTransactionStatus?.('Waiting for approval confirmation...');
-      await approveTx.wait();
-      console.log("Approval confirmed");
     } catch (error) {
       console.error("LINK approval error:", error);
       // Continue even if approval fails - the contract will check if enough allowance exists
