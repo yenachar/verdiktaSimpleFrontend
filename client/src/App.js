@@ -1,6 +1,7 @@
 /* global BigInt */
 // src/App.js
 
+// import polyfill for UUID
 import './utils/crypto-polyfill';
 
 import React, { useState, useEffect } from 'react';
