@@ -1,6 +1,8 @@
 /* global BigInt */
 // src/App.js
 
+import './utils/crypto-polyfill';
+
 import React, { useState, useEffect } from 'react';
 import { Chart, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
