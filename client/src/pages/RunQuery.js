@@ -248,9 +248,20 @@ const handleRunQuery = async () => {
       // Continue even if approval fails - the contract will check if enough allowance exists
     }
 
-
-
       // 5) Send the transaction using the new aggregator method
+
+      // Get the provider's fee data before sending the transaction
+      const feeData = await provider.getFeeData();
+
+      // Set your desired multipliers (using whole numbers and then dividing for precision)
+      const priorityFeeMultiplier = 110; // 1.1 as an integer (110%)
+      const maxFeeMultiplier = 110; // 1.1 as an integer (110%)
+      const divider = 100; // Divider to get back to the correct scale
+
+      // Apply multipliers and divide by 1000 to fix the scaling issue
+      const adjustedPriorityFee = (feeData.maxPriorityFeePerGas * BigInt(priorityFeeMultiplier)) / BigInt(divider) / BigInt(1000);
+      const adjustedMaxFee = (feeData.maxFeePerGas * BigInt(maxFeeMultiplier)) / BigInt(divider) / BigInt(1000);
+
       setTransactionStatus?.('Sending transaction...');
       const tx = await contract.requestAIEvaluationWithApproval(
         [cid],
@@ -258,7 +269,11 @@ const handleRunQuery = async () => {
         maxFee,
         estimatedBaseCost,
         maxFeeBasedScalingFactor,
-        { gasLimit: 5000000, value: 0 }
+        { 
+          gasLimit: 5000000, // high current gas limit
+          maxFeePerGas: adjustedMaxFee,
+          maxPriorityFeePerGas: adjustedPriorityFee
+        }
       );
       console.log('Transaction sent:', tx);
       setTransactionStatus?.('Waiting for confirmation...');
