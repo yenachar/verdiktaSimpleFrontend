@@ -233,13 +233,11 @@ const handleRunQuery = async () => {
 
       // 4) Insert the LINK approval step seamlessly.
       // For example, if the aggregator requires approval for maxFee * (oraclesToPoll + clusterSize)
-      const ORACLES_TO_POLL = 4;
-      const CLUSTER_SIZE = 2;
     try {
-      // Directly approve without checking allowance first
-      const requiredApprovalAmount = maxFee*BigInt(ORACLES_TO_POLL+CLUSTER_SIZE);
+      // Approve the amount the contract gives as its maximum
+      const requiredApprovalAmount = await contract.maxTotalFee(maxFee);
+       console.log('Max total fee given by contract: ', requiredApprovalAmount.toString());
       setTransactionStatus?.('Requesting LINK approval...');
-
       await approveLinkSpending(requiredApprovalAmount, provider, walletAddress, contractAddress, linkTokenAddress);
       console.log('Approval amount: ', requiredApprovalAmount.toString());  
       

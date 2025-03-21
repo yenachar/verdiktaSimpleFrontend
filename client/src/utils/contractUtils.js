@@ -17,7 +17,8 @@ export const CONTRACT_ABI = [
   'function getContractConfig() public view returns (address oracleAddr, address linkAddr, bytes32 jobId, uint256 currentFee)',
   'event Debug1(address linkToken, address oracle, uint256 fee, uint256 balance, bytes32 jobId)',
   'function getEvaluation(bytes32 _requestId) public view returns (uint256[] memory likelihoods, string memory justificationCID, bool exists)',
-  'function requestAIEvaluationWithApproval(string[] memory cids, uint256 _alpha, uint256 _maxFee, uint256 _estimatedBaseCost, uint256 _maxFeeBasedScalingFactor) public returns (bytes32 requestId)'
+  'function requestAIEvaluationWithApproval(string[] memory cids, uint256 _alpha, uint256 _maxFee, uint256 _estimatedBaseCost, uint256 _maxFeeBasedScalingFactor) public returns (bytes32 requestId)',
+  'function maxTotalFee(uint256 requestedMaxOracleFee) public view returns (uint256)'
 
 ];
 
