@@ -137,6 +137,7 @@ function RunQuery({
   maxFeeBasedScalingFactor,
 }) {
   const [activeTooltipId, setActiveTooltipId] = useState(null);
+  const [textAddendum, setTextAddendum] = useState('');
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -220,12 +221,16 @@ const handleRunQuery = async () => {
           cid = await uploadToServer(queryPackageFile, setUploadProgress);
           break;
         }
+
         case 'ipfs': {
-          cid = queryPackageCid.trim() || DEFAULT_QUERY_CID;
+          const baseCid = queryPackageCid.trim() || DEFAULT_QUERY_CID;
+          // Only append the addendum if it's not empty
+          cid = textAddendum ? `${baseCid}:${textAddendum}` : baseCid;
           break;
         }
+
         default:
-          throw new Error(`Invalid method: ${selectedMethod}`);
+          throw new Error(`Invalid method: ${selectedMethod}. Was any method selected?`);
       }
       setCurrentCid?.(cid);
 
@@ -424,17 +429,28 @@ This blockchain operation requires LINK tokens to pay for the AI jury service. P
               )}
             </div>
           )}
-          {selectedMethod === 'ipfs' && (
-            <div className="cid-input">
-              <label>Enter Query Package CID</label>
-              <input
-                type="text"
-                className={!queryPackageCid ? 'default-value' : ''}
-                value={queryPackageCid || DEFAULT_QUERY_CID}
-                onChange={(e) => setQueryPackageCid(e.target.value)}
-              />
-            </div>
-          )}
+
+	{selectedMethod === 'ipfs' && (
+	  <div className="cid-input">
+	    <label>Enter Query Package CID</label>
+	    <input
+	      type="text"
+	      className={!queryPackageCid ? 'default-value' : ''}
+	      value={queryPackageCid || DEFAULT_QUERY_CID}
+	      onChange={(e) => setQueryPackageCid(e.target.value)}
+	    />
+	    
+	    <label>Optional Text Addendum</label>
+	    <input
+	      type="text"
+	      className="text-addendum"
+	      placeholder="Add optional text here"
+	      value={textAddendum}
+	      onChange={(e) => setTextAddendum(e.target.value.trim())}
+	    />
+	  </div>
+	)}
+
         </div>
         <div className="actions">
           <button
