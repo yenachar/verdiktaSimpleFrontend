@@ -268,6 +268,7 @@ const handleRunQuery = async () => {
       setTransactionStatus?.('Sending transaction...');
       const tx = await contract.requestAIEvaluationWithApproval(
         [cid],
+	textAddendum,
         alpha,
         maxFee,
         estimatedBaseCost,
