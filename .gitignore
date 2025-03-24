@@ -4,3 +4,4 @@ client/.env
 server/.env
 client/src/server.cert
 client/src/server.key
+server/data/contracts.json
