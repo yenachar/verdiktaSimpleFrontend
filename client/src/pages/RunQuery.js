@@ -223,10 +223,7 @@ const handleRunQuery = async () => {
         }
 
         case 'ipfs': {
-          const baseCid = queryPackageCid.trim() || DEFAULT_QUERY_CID;
-          // Only append the addendum if it's not empty (now sent explicitly)
-          //cid = textAddendum ? `${baseCid}:${textAddendum}` : baseCid;
-          cid = baseCid;
+          cid = queryPackageCid.trim() || DEFAULT_QUERY_CID;
           break;
         }
 
