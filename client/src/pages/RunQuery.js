@@ -224,8 +224,9 @@ const handleRunQuery = async () => {
 
         case 'ipfs': {
           const baseCid = queryPackageCid.trim() || DEFAULT_QUERY_CID;
-          // Only append the addendum if it's not empty
-          cid = textAddendum ? `${baseCid}:${textAddendum}` : baseCid;
+          // Only append the addendum if it's not empty (now sent explicitly)
+          //cid = textAddendum ? `${baseCid}:${textAddendum}` : baseCid;
+          cid = baseCid;
           break;
         }
 
@@ -268,7 +269,7 @@ const handleRunQuery = async () => {
       setTransactionStatus?.('Sending transaction...');
       const tx = await contract.requestAIEvaluationWithApproval(
         [cid],
-	textAddendum,
+	textAddendum.trim(),
         alpha,
         maxFee,
         estimatedBaseCost,
@@ -447,7 +448,7 @@ This blockchain operation requires LINK tokens to pay for the AI jury service. P
 	      className="text-addendum"
 	      placeholder="Add optional text here"
 	      value={textAddendum}
-	      onChange={(e) => setTextAddendum(e.target.value.trim())}
+	      onChange={(e) => setTextAddendum(e.target.value)}
 	    />
 	  </div>
 	)}
