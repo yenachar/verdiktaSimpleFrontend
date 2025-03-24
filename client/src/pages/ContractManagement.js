@@ -26,9 +26,9 @@ const ContractManagement = ({ onContractsUpdated }) => {
       
       if (data.success) {
         setContracts(data.contracts);
-        // Notify parent component about contract updates
+        // Always notify parent component about contract updates
         if (onContractsUpdated) {
-          onContractsUpdated();
+          onContractsUpdated(data.contracts);
         }
       } else {
         setError(data.error || 'Failed to fetch contracts');

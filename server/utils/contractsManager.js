@@ -91,8 +91,38 @@ async function ensureDataDir() {
 }
 
 /**
+ * Checks if there's an inconsistency between .env contracts and contracts.json
+ * @param {Array} envContracts - Contracts from .env
+ * @param {Array} jsonContracts - Contracts from contracts.json
+ * @returns {boolean} True if inconsistent
+ */
+function contractsAreDifferent(envContracts, jsonContracts) {
+  if (envContracts.length !== jsonContracts.length) return true;
+  
+  // Create a map of addresses to names from both sources for comparison
+  const envMap = new Map(envContracts.map(c => [c.address.toLowerCase(), c.name]));
+  const jsonMap = new Map(jsonContracts.map(c => [c.address.toLowerCase(), c.name]));
+  
+  // Check if all env contracts exist in json with same name
+  for (const [address, name] of envMap.entries()) {
+    if (!jsonMap.has(address) || jsonMap.get(address) !== name) {
+      return true;
+    }
+  }
+  
+  // Check if all json contracts exist in env with same name
+  for (const [address, name] of jsonMap.entries()) {
+    if (!envMap.has(address) || envMap.get(address) !== name) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
  * Loads contracts from the contracts.json file
- * If file doesn't exist or only has default contract, tries to import from .env
+ * ALWAYS prioritizes .env file contracts when there's an inconsistency
  * @returns {Promise<Array>} Array of contract objects
  */
 async function loadContracts() {
@@ -100,48 +130,53 @@ async function loadContracts() {
     // Ensure the data directory exists
     await ensureDataDir();
     
-    let shouldImportFromEnv = false;
-    let contracts = [];
+    // First, import contracts from .env
+    const envContracts = await importContractsFromEnv();
+    let jsonContracts = [];
+    let shouldUpdateJson = true;
     
     try {
-      // Check if file exists
+      // Check if contracts.json file exists
       await fs.access(CONTRACTS_FILE_PATH);
       
       // Read and parse the file
       const data = await fs.readFile(CONTRACTS_FILE_PATH, 'utf8');
       const contractsData = JSON.parse(data);
       
-      // If file is empty or contracts array is missing or only has the default contract, import from .env
-      if (!contractsData || !contractsData.contracts || !Array.isArray(contractsData.contracts) || 
-          (contractsData.contracts.length === 1 && 
-           contractsData.contracts[0].address === "0x2E67c4D565C55E31514eDd68E42bFBb50a2C49F1" && 
-           contractsData.contracts[0].name === "Default Contract")) {
-        console.log('contracts.json has only default data, importing from .env');
-        shouldImportFromEnv = true;
-      } else {
-        contracts = contractsData.contracts;
+      if (contractsData && contractsData.contracts && Array.isArray(contractsData.contracts)) {
+        jsonContracts = contractsData.contracts;
+        
+        // Check if json contracts differ from env contracts
+        if (contractsAreDifferent(envContracts, jsonContracts)) {
+          console.log('Detected inconsistency: .env contracts differ from contracts.json');
+          // Always prioritize .env file, as per requirements
+          shouldUpdateJson = true;
+        } else {
+          // Contracts are consistent, no need to update
+          shouldUpdateJson = false;
+          console.log('Contracts in .env and contracts.json are consistent');
+          return jsonContracts;
+        }
       }
     } catch (error) {
-      // File doesn't exist, import from .env
-      console.log('contracts.json does not exist, importing from .env');
-      shouldImportFromEnv = true;
+      // File doesn't exist or can't be parsed, should create it
+      console.log('contracts.json does not exist or is invalid, will create from .env');
+      shouldUpdateJson = true;
     }
     
-    if (shouldImportFromEnv) {
-      // Import contracts from .env
-      contracts = await importContractsFromEnv();
-      
-      // Save the imported contracts to contracts.json
-      const defaultData = {
-        contracts: contracts,
+    if (shouldUpdateJson) {
+      // Update contracts.json with .env contracts
+      const data = {
+        contracts: envContracts,
         lastUpdated: new Date().toISOString()
       };
       
-      await fs.writeFile(CONTRACTS_FILE_PATH, JSON.stringify(defaultData, null, 2));
-      console.log('Imported contracts from .env saved to contracts.json');
+      await fs.writeFile(CONTRACTS_FILE_PATH, JSON.stringify(data, null, 2));
+      console.log('Updated contracts.json with .env contracts');
+      return envContracts;
     }
     
-    return contracts;
+    return jsonContracts;
   } catch (error) {
     console.error('Error loading contracts:', error);
     // Return default contract in case of error
@@ -187,11 +222,10 @@ async function saveContracts(contracts) {
     await fs.writeFile(CONTRACTS_FILE_PATH, JSON.stringify(data, null, 2));
     console.log(`Saved ${validatedContracts.length} contracts to ${CONTRACTS_FILE_PATH}`);
     
-    // Optional: Update .env file with the new contract values
-    try {
-      await updateEnvFile(validatedContracts);
-    } catch (envError) {
-      console.warn('Failed to update .env file:', envError.message);
+    // Always update .env file to ensure consistency
+    const envUpdateResult = await updateEnvFile(validatedContracts);
+    if (!envUpdateResult) {
+      console.warn('Failed to update .env file, consistency not guaranteed');
     }
     
     return true;
@@ -227,7 +261,14 @@ async function updateEnvFile(contracts) {
         envContent = await fs.readFile(envOrigPath, 'utf8');
         console.log('Copied content from .env.orig as base for .env');
       } catch (origError) {
-        console.log('No .env.orig file found. Creating new .env file');
+        // If .env.orig doesn't exist, try .env.example
+        const envExamplePath = path.resolve(__dirname, '../../client/.env.example');
+        try {
+          envContent = await fs.readFile(envExamplePath, 'utf8');
+          console.log('Copied content from .env.example as base for .env');
+        } catch (exampleError) {
+          console.log('No .env template files found. Creating new .env file');
+        }
       }
     }
     
@@ -255,8 +296,26 @@ async function updateEnvFile(contracts) {
   }
 }
 
+/**
+ * Handle graceful shutdown by ensuring .env is updated with the latest contracts.json
+ * This should be called when server is shutting down
+ */
+async function syncOnShutdown() {
+  try {
+    console.log('Syncing contracts to .env before shutdown');
+    const contracts = await loadContracts();
+    await updateEnvFile(contracts);
+    console.log('Successfully synced contracts to .env before shutdown');
+    return true;
+  } catch (error) {
+    console.error('Failed to sync contracts to .env before shutdown:', error);
+    return false;
+  }
+}
+
 module.exports = {
   loadContracts,
   saveContracts,
-  isValidEthereumAddress
+  isValidEthereumAddress,
+  syncOnShutdown
 }; 

@@ -8,8 +8,9 @@ require('dotenv').config();
 
 const app = express();
 const ipfsClient = require('./services/ipfsClient');
-// Import contract routes
+// Import contract routes and manager
 const contractRoutes = require('./routes/contractRoutes');
+const { syncOnShutdown } = require('./utils/contractsManager');
 
 // Constants
 const UPLOAD_TIMEOUT = 60000; // 60 seconds
@@ -323,6 +324,15 @@ const startServer = async () => {
     // Handle server shutdown
     const shutdown = async () => {
       console.log('Shutting down server...');
+      
+      // Sync contracts to .env file before shutdown
+      try {
+        await syncOnShutdown();
+        console.log('Contracts synced to .env file');
+      } catch (error) {
+        console.error('Failed to sync contracts to .env:', error);
+      }
+      
       server.close(() => {
         console.log('Server closed');
         process.exit(0);

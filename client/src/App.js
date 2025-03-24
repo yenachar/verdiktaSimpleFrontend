@@ -178,12 +178,33 @@ function App() {
     if (currentPage !== PAGES.CONTRACT_MANAGEMENT && contractAddress === "manage" && contractOptions.length > 0) {
       setContractAddress(contractOptions[0].address);
     }
+    
+    // Refresh contracts when returning from Contract Management page
+    if (currentPage !== PAGES.CONTRACT_MANAGEMENT && prevPage === PAGES.CONTRACT_MANAGEMENT) {
+      loadContracts();
+    }
   }, [currentPage, contractAddress, contractOptions]);
 
+  // Track previous page for detecting navigation from Contract Management
+  const [prevPage, setPrevPage] = useState(null);
+  useEffect(() => {
+    setPrevPage(currentPage);
+  }, [currentPage]);
+
   // Function to load contracts
-  const loadContracts = async () => {
+  const loadContracts = async (updatedContracts) => {
     setIsLoadingContracts(true);
     try {
+      // If contracts are passed directly, use them instead of fetching
+      if (updatedContracts && Array.isArray(updatedContracts)) {
+        setContractOptions(updatedContracts);
+        if (updatedContracts.length > 0 && (!contractAddress || contractAddress === "manage")) {
+          setContractAddress(updatedContracts[0].address);
+        }
+        setIsLoadingContracts(false);
+        return;
+      }
+      
       const contracts = await fetchContracts();
       setContractOptions(contracts);
       if (contracts.length > 0 && (!contractAddress || contractAddress === "manage")) {
