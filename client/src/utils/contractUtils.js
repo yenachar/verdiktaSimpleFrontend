@@ -6,7 +6,6 @@ import { ethers } from 'ethers';
 // Contract Constants
 // ------------------
 export const CONTRACT_ABI = [
-  'function requestAIEvaluation(string[] memory cids) public returns (bytes32 requestId)',
   'function evaluations(bytes32 requestId) public view returns (uint256[] likelihoods, string justificationCID)',
   'function setChainlinkToken(address _link)',
   'function setChainlinkOracle(address _oracle)',
