@@ -254,14 +254,20 @@ const handleRunQuery = async () => {
       // Get the provider's fee data before sending the transaction
       const feeData = await provider.getFeeData();
 
+      // get maxPriorityFeePerGas and maxFeePerGas with a fallback method for old nodes and implementations
+      const fallbackGasPrice = feeData.gasPrice ? feeData.gasPrice * BigInt(1000) : undefined;
+      const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ? feeData.maxPriorityFeePerGas : fallbackGasPrice;
+      const maxFeePerGas = feeData.maxFeePerGas ? feeData.maxFeePerGas : fallbackGasPrice;
+
+
       // Set your desired multipliers (using whole numbers and then dividing for precision)
       const priorityFeeMultiplier = 110; // 1.1 as an integer (110%)
       const maxFeeMultiplier = 110; // 1.1 as an integer (110%)
       const divider = 100; // Divider to get back to the correct scale
 
       // Apply multipliers and divide by 1000 to fix the scaling issue
-      const adjustedPriorityFee = (feeData.maxPriorityFeePerGas * BigInt(priorityFeeMultiplier)) / BigInt(divider) / BigInt(1000);
-      const adjustedMaxFee = (feeData.maxFeePerGas * BigInt(maxFeeMultiplier)) / BigInt(divider) / BigInt(1000);
+      const adjustedPriorityFee = (maxPriorityFeePerGas * BigInt(priorityFeeMultiplier)) / BigInt(divider) / BigInt(1000);
+      const adjustedMaxFee = (maxFeePerGas * BigInt(maxFeeMultiplier)) / BigInt(divider) / BigInt(1000);
 
       setTransactionStatus?.('Sending transaction...');
       const tx = await contract.requestAIEvaluationWithApproval(
