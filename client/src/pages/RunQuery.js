@@ -271,6 +271,7 @@ const handleRunQuery = async () => {
         maxFee,
         estimatedBaseCost,
         maxFeeBasedScalingFactor,
+	128, // standard class for now
         { 
           gasLimit: 5000000, // high current gas limit
           maxFeePerGas: adjustedMaxFee,

@@ -15,7 +15,7 @@ export const CONTRACT_ABI = [
   'event ChainlinkFulfilled(bytes32 indexed id)',
   'function getContractConfig() public view returns (address oracleAddr, address linkAddr, bytes32 jobId, uint256 currentFee)',
   'function getEvaluation(bytes32 _requestId) public view returns (uint256[] memory likelihoods, string memory justificationCID, bool exists)',
-  'function requestAIEvaluationWithApproval(string[] memory cids, string memory addendumText, uint256 _alpha, uint256 _maxFee, uint256 _estimatedBaseCost, uint256 _maxFeeBasedScalingFactor) public returns (bytes32 requestId)',
+  'function requestAIEvaluationWithApproval(string[] memory cids, string memory addendumText, uint256 _alpha, uint256 _maxFee, uint256 _estimatedBaseCost, uint256 _maxFeeBasedScalingFactor, uint64 _requestedClass) public returns (bytes32 requestId)',
   'function maxTotalFee(uint256 requestedMaxOracleFee) public view returns (uint256)'
 
 ];
