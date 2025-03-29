@@ -7,17 +7,33 @@ const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:5000';
  * The server handles IPFS interactions and returns the raw data.
  *
  * @param {string} cid The IPFS CID
- * @param {number} [retries=3] Number of retry attempts
+ * @param {number|object} [retriesOrOptions=3] Number of retry attempts or options object
  * @param {number} [delay=2000] Delay between retries in milliseconds
  * @returns {Promise<Response>} The fetch Response object.
  */
-const fetchWithRetry = async (cid, retries = 3, delay = 2000) => {
+const fetchWithRetry = async (cid, retriesOrOptions = 3, delay = 2000) => {
   if (!cid) {
     throw new Error('CID is required for fetching data');
   }
 
+  // Handle the case where the second parameter is an options object
+  let retries = 3;
+  let options = {};
+  
+  if (typeof retriesOrOptions === 'object') {
+    options = retriesOrOptions;
+    retries = options.retries || 3;
+  } else {
+    retries = retriesOrOptions;
+  }
+
   const baseUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
-  const url = `${baseUrl}/api/fetch/${cid.trim()}`;
+  let url = `${baseUrl}/api/fetch/${cid.trim()}`;
+  
+  // Add query parameters if we have options
+  if (options.isQueryPackage) {
+    url += '?isQueryPackage=true';
+  }
 
   for (let i = 0; i < retries; i++) {
     try {

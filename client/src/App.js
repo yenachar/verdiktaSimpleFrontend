@@ -4,25 +4,11 @@
 // import polyfill for UUID
 import './utils/crypto-polyfill';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Chart, CategoryScale, LinearScale, BarElement } from 'chart.js';
-import { Bar } from 'react-chartjs-2';
 import './App.css';
 import { ethers, parseEther } from 'ethers'; // ethers v6 import
-import FormData from 'form-data';
 import archiveService from './utils/archiveService';
-import manifestParser from './utils/manifestParser';
-import PaginatedJustification from './components/paginatedJustification';
-import { 
-  CONTRACT_ABI, 
-  BASE_SEPOLIA_CHAIN_ID, 
-  BASE_SEPOLIA_PARAMS,
-  debugContract,
-  switchToBaseSepolia,
-  checkContractFunding
-} from './utils/contractUtils';
-import { fetchWithRetry, tryParseJustification } from './utils/fetchUtils';
-import { getAugmentedQueryText } from './utils/queryUtils';
 import { fetchContracts } from './utils/contractManagementService';
 import RunQuery from './pages/RunQuery';
 import JurySelection from './pages/JurySelection';
@@ -51,7 +37,7 @@ const fetchQueryPackageDetails = async (cid) => {
   try {
     console.log('Fetching query package:', cid);
     const baseUrl = SERVER_URL.endsWith('/') ? SERVER_URL.slice(0, -1) : SERVER_URL;
-    const response = await fetch(`${baseUrl}/api/fetch/${cid}`);
+    const response = await fetch(`${baseUrl}/api/fetch/${cid}?isQueryPackage=true`);
     
     if (!response.ok) {
       const errorData = await response.json();
@@ -143,7 +129,6 @@ function App() {
   const [loadingResults, setLoadingResults] = useState(false);
 
   // Other state declarations
-  const [activeTooltipId, setActiveTooltipId] = useState(null);
   const [currentCid, setCurrentCid] = useState('');
   // For Run page – we use "approval" so the new method is used seamlessly
   const [selectedMethod, setSelectedMethod] = useState('approval');
@@ -160,6 +145,7 @@ function App() {
   const [linkInput, setLinkInput] = useState('');
   const [contractOptions, setContractOptions] = useState([]);
   const [isLoadingContracts, setIsLoadingContracts] = useState(true);
+  const [prevPage, setPrevPage] = useState(null);
 
   // Default aggregator parameters
   const ALPHA = 500;
@@ -168,31 +154,8 @@ function App() {
   const ESTIMATED_BASE_COST = MAX_FEE * BigInt(BASE_FEE_PCT) / 100n; // Using native BigInt arithmetic
   const MAX_FEE_SCALING_FACTOR = 10;
 
-  // Load contracts from API on mount
-  useEffect(() => {
-    loadContracts();
-  }, []);
-
-  // Reset dropdown after returning from Contract Management
-  useEffect(() => {
-    if (currentPage !== PAGES.CONTRACT_MANAGEMENT && contractAddress === "manage" && contractOptions.length > 0) {
-      setContractAddress(contractOptions[0].address);
-    }
-    
-    // Refresh contracts when returning from Contract Management page
-    if (currentPage !== PAGES.CONTRACT_MANAGEMENT && prevPage === PAGES.CONTRACT_MANAGEMENT) {
-      loadContracts();
-    }
-  }, [currentPage, contractAddress, contractOptions]);
-
-  // Track previous page for detecting navigation from Contract Management
-  const [prevPage, setPrevPage] = useState(null);
-  useEffect(() => {
-    setPrevPage(currentPage);
-  }, [currentPage]);
-
-  // Function to load contracts
-  const loadContracts = async (updatedContracts) => {
+  // Function to load contracts - wrapping in useCallback to prevent infinite re-renders
+  const loadContracts = useCallback(async (updatedContracts) => {
     setIsLoadingContracts(true);
     try {
       // If contracts are passed directly, use them instead of fetching
@@ -226,7 +189,29 @@ function App() {
     } finally {
       setIsLoadingContracts(false);
     }
-  };
+  }, [contractAddress]);
+
+  // Load contracts from API on mount
+  useEffect(() => {
+    loadContracts();
+  }, [loadContracts]);
+
+  // Reset dropdown after returning from Contract Management
+  useEffect(() => {
+    if (currentPage !== PAGES.CONTRACT_MANAGEMENT && contractAddress === "manage" && contractOptions.length > 0) {
+      setContractAddress(contractOptions[0].address);
+    }
+    
+    // Refresh contracts when returning from Contract Management page
+    if (currentPage !== PAGES.CONTRACT_MANAGEMENT && prevPage === PAGES.CONTRACT_MANAGEMENT) {
+      loadContracts();
+    }
+  }, [currentPage, contractAddress, contractOptions, loadContracts, prevPage]);
+
+  // Track previous page for detecting navigation from Contract Management
+  useEffect(() => {
+    setPrevPage(currentPage);
+  }, [currentPage]);
 
   // Fetch package details when currentCid changes
   useEffect(() => {

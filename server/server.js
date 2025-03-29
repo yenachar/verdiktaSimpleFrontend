@@ -143,6 +143,7 @@ app.post('/api/upload', async (req, res) => {
 // IPFS fetch endpoint with improved retry logic
 app.get('/api/fetch/:cid', async (req, res) => {
   const { cid } = req.params;
+  const isQueryPackage = req.query.isQueryPackage === 'true';
 
   // Validate CID format
   if (!CID_REGEX.test(cid)) {
@@ -186,6 +187,20 @@ app.get('/api/fetch/:cid', async (req, res) => {
           reject(new Error('Timeout'));
         }, timeoutMs);
       });
+
+      // Use the ipfsClient service with the isQueryPackage flag when appropriate
+      try {
+        console.log(`Using ipfsClient with isQueryPackage=${isQueryPackage}`);
+        const data = await ipfsClient.fetchFromIPFS(cid, { isQueryPackage });
+        return { 
+          data, 
+          headers: new Map([['content-type', 'application/octet-stream']]),
+          gateway: 'ipfsClient'
+        };
+      } catch (ipfsClientError) {
+        console.log(`ipfsClient failed:`, ipfsClientError.message);
+        // Fall back to gateway method if ipfsClient fails
+      }
 
       // Try each gateway with DNS error handling
       for (const baseGateway of IPFS_GATEWAYS) {

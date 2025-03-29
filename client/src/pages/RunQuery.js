@@ -1,6 +1,6 @@
 /* global BigInt */
 // src/pages/RunQuery.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 // Import ethers along with parseEther from ethers v6 (we no longer import BigNumber)
 import { ethers, parseEther } from 'ethers';
 import { PAGES } from '../App';
@@ -22,6 +22,12 @@ const LINK_TOKEN_ADDRESS = "0x779877A7B0D9E8603169DdbD7836e478b4624789";
 
 // Default query package CID for example/testing
 const DEFAULT_QUERY_CID = 'QmSnynnZVufbeb9GVNLBjxBJ45FyHgjPYUHTvMK5VmQZcS';
+
+// Helper function to get the first CID from a comma-separated list
+const getFirstCid = (cidString) => {
+  if (!cidString) return '';
+  return cidString.split(',')[0].trim();
+};
 
 // Helper function to poll for evaluation results
 async function pollForEvaluationResults(
@@ -138,6 +144,15 @@ function RunQuery({
 }) {
   const [activeTooltipId, setActiveTooltipId] = useState(null);
   const [textAddendum, setTextAddendum] = useState('');
+  // Add state to track if we're showing the default CID value
+  const [showingDefaultCid, setShowingDefaultCid] = useState(queryPackageCid === '' || queryPackageCid === undefined);
+
+  // Update showingDefaultCid when selectedMethod changes to 'ipfs'
+  useEffect(() => {
+    if (selectedMethod === 'ipfs') {
+      setShowingDefaultCid(queryPackageCid === '' || queryPackageCid === undefined);
+    }
+  }, [selectedMethod, queryPackageCid]);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -147,9 +162,6 @@ function RunQuery({
       alert('Please upload a ZIP file');
     }
   };
-
-
-
 
 const handleRunQuery = async () => {
   if (!isConnected && selectedMethod !== 'config') {
@@ -173,9 +185,9 @@ const handleRunQuery = async () => {
     const config = await contract.getContractConfig();
     const linkTokenAddress = config.linkAddr;
 
-
       // 3) Process query package based on selected method (config, file, or IPFS)
       let cid;
+      let firstCid; // For fetching package details
       switch (selectedMethod) {
         case 'config': {
           setTransactionStatus?.('Building archive from config...');
@@ -223,16 +235,24 @@ const handleRunQuery = async () => {
         }
 
         case 'ipfs': {
-          cid = queryPackageCid.trim() || DEFAULT_QUERY_CID;
+          // If showing default, use DEFAULT_QUERY_CID, otherwise use the value from queryPackageCid
+          cid = showingDefaultCid ? DEFAULT_QUERY_CID : queryPackageCid.trim();
+          // Extract the first CID for fetching package details
+          firstCid = getFirstCid(cid);
+          // Set the first CID for package details display
+          setCurrentCid?.(firstCid);
           break;
         }
 
         default:
           throw new Error(`Invalid method: ${selectedMethod}. Was any method selected?`);
       }
-      setCurrentCid?.(cid);
 
-
+      // If we're using the IPFS method with multiple CIDs, we need to ensure
+      // we're using the first CID for display purposes
+      if (selectedMethod !== 'ipfs') {
+        setCurrentCid?.(cid);
+      }
 
       // 4) Insert the LINK approval step seamlessly.
       // For example, if the aggregator requires approval for maxFee * (oraclesToPoll + clusterSize)
@@ -438,13 +458,29 @@ This blockchain operation requires LINK tokens to pay for the AI jury service. P
 
 	{selectedMethod === 'ipfs' && (
 	  <div className="cid-input">
-	    <label>Enter Query Package CID</label>
+	    <label>Enter Query Package CID(s)</label>
 	    <input
 	      type="text"
-	      className={!queryPackageCid ? 'default-value' : ''}
-	      value={queryPackageCid || DEFAULT_QUERY_CID}
-	      onChange={(e) => setQueryPackageCid(e.target.value)}
+	      className={showingDefaultCid ? 'default-value' : ''}
+	      value={showingDefaultCid ? DEFAULT_QUERY_CID : queryPackageCid}
+	      onFocus={() => {
+	        // Clear default value when field is focused
+	        if (showingDefaultCid) {
+	          setShowingDefaultCid(false);
+	          setQueryPackageCid('');
+	        }
+	      }}
+	      onChange={(e) => {
+	        // Set exactly what the user typed/pasted
+	        setQueryPackageCid(e.target.value);
+	        // Ensure we're not showing default anymore once user has typed something
+	        if (showingDefaultCid) {
+	          setShowingDefaultCid(false);
+	        }
+	      }}
+	      placeholder="Enter one or more CIDs separated by commas"
 	    />
+	    <small className="helper-text">For multiple CIDs, separate them with commas. Only the first CID will be used to display package details.</small>
 	    
 	    <label>Optional Text Addendum</label>
 	    <input

@@ -1,6 +1,6 @@
 // src/components/PaginatedJustification.js
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { fetchWithRetry, tryParseJustification } from '../utils/fetchUtils';
 
 // Simple arrow components to avoid external dependency
@@ -53,6 +53,31 @@ const PaginatedJustification = ({
   // Split CIDs and clean them
   const cids = resultCid?.split(',').map(cid => cid.trim()).filter(Boolean) || [];
 
+  // Define loadJustification as a useCallback function to include it in the dependencies
+  const loadJustification = useCallback(async (cid) => {
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('Fetching justification for CID:', cid);
+      const response = await fetchWithRetry(cid);
+      console.log('Received response for CID:', cid);
+      
+      const justificationText = await tryParseJustification(
+        response,
+        cid,
+        onUpdateOutcomes,
+        onUpdateTimestamp,
+        setOutcomeLabels
+      );
+      console.log('Parsed justification:', justificationText?.substring(0, 100) + '...');
+      return justificationText;
+    } catch (error) {
+      console.error('Error loading justification:', error);
+      setError(error.message);
+      return `Error loading justification: ${error.message}`;
+    }
+  }, [onUpdateOutcomes, onUpdateTimestamp, setOutcomeLabels]);
+
   useEffect(() => {
     // Reset state when resultCid changes
     if (resultCid) {
@@ -72,30 +97,6 @@ const PaginatedJustification = ({
     if (hasLoaded) {
       return;
     }
-
-    const loadJustification = async (cid) => {
-      setLoading(true);
-      setError(null);
-      try {
-        console.log('Fetching justification for CID:', cid);
-        const response = await fetchWithRetry(cid);
-        console.log('Received response for CID:', cid);
-        
-        const justificationText = await tryParseJustification(
-          response,
-          cid,
-          onUpdateOutcomes,
-          onUpdateTimestamp,
-          setOutcomeLabels
-        );
-        console.log('Parsed justification:', justificationText?.substring(0, 100) + '...');
-        return justificationText;
-      } catch (error) {
-        console.error('Error loading justification:', error);
-        setError(error.message);
-        return `Error loading justification: ${error.message}`;
-      }
-    };
 
     // Initialize with initial text if available and no CIDs
     if (initialText && cids.length === 0) {
@@ -128,7 +129,7 @@ const PaginatedJustification = ({
           setHasLoaded(true);
         });
     }
-  }, [resultCid, initialText, hasLoaded]); // Remove other dependencies that cause re-fetching
+  }, [resultCid, initialText, cids, hasLoaded, loadJustification, onFetchComplete]);
 
   // If no CIDs and no justifications, show appropriate message
   if (cids.length === 0 && justifications.length === 0) {

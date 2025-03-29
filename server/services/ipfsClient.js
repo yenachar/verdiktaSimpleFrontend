@@ -22,11 +22,24 @@ class IPFSClient {
     });
   }
 
-  async fetchFromIPFS(cid) {
-    const url = `${this.gateway}/ipfs/${cid.trim()}`;
+  async fetchFromIPFS(cid, options = {}) {
+    // Default behavior for results: don't split CIDs
+    let cidToFetch = cid.trim();
+    
+    // If this is a query package request and not a result, extract only the first CID
+    // The frontend should pass isQueryPackage: true when fetching query packages
+    if (options.isQueryPackage && cidToFetch.includes(',')) {
+      cidToFetch = cidToFetch.split(',')[0].trim();
+      console.log('Processing query package CID - using first CID only:', cidToFetch);
+    }
+    
+    const url = `${this.gateway}/ipfs/${cidToFetch}`;
+    
     console.log('Fetching from IPFS:', { 
         url,
-        cid: cid.trim(),
+        originalCid: cid.trim(),
+        cidToFetch,
+        isQueryPackage: !!options.isQueryPackage,
         gateway: this.gateway
     });
 
