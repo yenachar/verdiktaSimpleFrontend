@@ -289,9 +289,13 @@ const handleRunQuery = async () => {
       const adjustedPriorityFee = (maxPriorityFeePerGas * BigInt(priorityFeeMultiplier)) / BigInt(divider) / BigInt(1000);
       const adjustedMaxFee = (maxFeePerGas * BigInt(maxFeeMultiplier)) / BigInt(divider) / BigInt(1000);
 
+      // Parse comma-separated CIDs into an array
+      const cidArray = cid.split(',').map(c => c.trim()).filter(c => c.length > 0);
+      console.log('Sending CIDs to contract:', cidArray);
+
       setTransactionStatus?.('Sending transaction...');
       const tx = await contract.requestAIEvaluationWithApproval(
-        [cid],
+        cidArray,
 	textAddendum.trim(),
         alpha,
         maxFee,
