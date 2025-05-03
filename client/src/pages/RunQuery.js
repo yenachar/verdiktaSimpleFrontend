@@ -2,7 +2,7 @@
 // src/pages/RunQuery.js
 import React, { useState, useEffect } from 'react';
 // Import ethers along with parseEther from ethers v6 (we no longer import BigNumber)
-import { ethers, parseEther } from 'ethers';
+import { ethers, parseEther, parseUnits } from 'ethers';
 import { PAGES } from '../App';
 import { fetchWithRetry, tryParseJustification } from '../utils/fetchUtils';
 import { createQueryPackageArchive } from '../utils/packageUtils';
@@ -286,8 +286,15 @@ const handleRunQuery = async () => {
       const divider = 100; // Divider to get back to the correct scale
 
       // Apply multipliers and divide by 1000 to fix the scaling issue
-      const adjustedPriorityFee = (maxPriorityFeePerGas * BigInt(priorityFeeMultiplier)) / BigInt(divider) / BigInt(1000);
-      const adjustedMaxFee = (maxFeePerGas * BigInt(maxFeeMultiplier)) / BigInt(divider) / BigInt(1000);
+      let adjustedPriorityFee = (maxPriorityFeePerGas * BigInt(priorityFeeMultiplier)) / BigInt(divider) / BigInt(1000);
+      let adjustedMaxFee = (maxFeePerGas * BigInt(maxFeeMultiplier)) / BigInt(divider) / BigInt(1000);
+
+      const FLOOR_PRIORITY = parseUnits('1', 'gwei');     // minimum tip
+
+      if (adjustedPriorityFee < FLOOR_PRIORITY) adjustedPriorityFee = FLOOR_PRIORITY;
+      if (adjustedMaxFee      < adjustedPriorityFee + FLOOR_PRIORITY /* headroom */) {
+        adjustedMaxFee = adjustedPriorityFee + FLOOR_PRIORITY;
+      }
 
       // Parse comma-separated CIDs into an array
       const cidArray = cid.split(',').map(c => c.trim()).filter(c => c.length > 0);
