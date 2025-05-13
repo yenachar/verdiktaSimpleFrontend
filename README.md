@@ -91,6 +91,7 @@ Key variables:
 |---------------|--------------------------------|----------------------------------------------|
 | client/.env   | `REACT_APP_CONTRACT_ADDRESSES` | Comma‑separated list of Verdikta contract addresses. |
 |               | `REACT_APP_CONTRACT_NAMES`     | Human‑readable labels in the same order.     |
+|               | `REACT_APP_CONTRACT_CLASSES`   | Comma-separated list of class values (0-99999, default 128) for each contract, in the same order as addresses/names. |
 |               | `REACT_APP_SERVER_URL`         | URL where the Express API is reachable.      |
 | server/.env   | `PORT`                         | Port for the API (defaults to `5000`).       |
 |               | `IPFS_PINNING_SERVICE`         | Base URL of your pinning provider.           |

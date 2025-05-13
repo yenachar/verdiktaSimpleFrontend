@@ -137,6 +137,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
   const [contractAddress, setContractAddress] = useState('');
+  const [selectedContractClass, setSelectedContractClass] = useState(128);
   const [transactionStatus, setTransactionStatus] = useState('');
   const [resultTimestamp, setResultTimestamp] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -160,30 +161,57 @@ function App() {
     try {
       // If contracts are passed directly, use them instead of fetching
       if (updatedContracts && Array.isArray(updatedContracts)) {
-        setContractOptions(updatedContracts);
-        if (updatedContracts.length > 0 && (!contractAddress || contractAddress === "manage")) {
-          setContractAddress(updatedContracts[0].address);
+        setContractOptions(updatedContracts.map(c => ({ ...c, class: c.class === undefined ? 128 : c.class })));
+        if (updatedContracts.length > 0) {
+          const currentSelected = updatedContracts.find(c => c.address === contractAddress);
+          if (currentSelected) {
+            setSelectedContractClass(currentSelected.class === undefined ? 128 : currentSelected.class);
+          } else if (!contractAddress || contractAddress === "manage"){
+            setContractAddress(updatedContracts[0].address);
+            setSelectedContractClass(updatedContracts[0].class === undefined ? 128 : updatedContracts[0].class);
+          }
         }
         setIsLoadingContracts(false);
         return;
       }
       
-      const contracts = await fetchContracts();
-      setContractOptions(contracts);
-      if (contracts.length > 0 && (!contractAddress || contractAddress === "manage")) {
-        setContractAddress(contracts[0].address);
+      const fetchedContracts = await fetchContracts();
+      const contractsWithClass = fetchedContracts.map(c => ({ ...c, class: c.class === undefined ? 128 : c.class }));
+      setContractOptions(contractsWithClass);
+
+      if (contractsWithClass.length > 0) {
+        const currentSelected = contractsWithClass.find(c => c.address === contractAddress);
+        if (currentSelected) {
+          setSelectedContractClass(currentSelected.class);
+        } else if (!contractAddress || contractAddress === "manage") {
+          setContractAddress(contractsWithClass[0].address);
+          setSelectedContractClass(contractsWithClass[0].class);
+        }
       }
     } catch (error) {
       console.error('Failed to load contracts:', error);
       const CONTRACT_ADDRESSES = (process.env.REACT_APP_CONTRACT_ADDRESSES || '').split(',');
       const CONTRACT_NAMES = (process.env.REACT_APP_CONTRACT_NAMES || '').split(',');
-      const fallbackOptions = CONTRACT_ADDRESSES.map((address, index) => ({
-        address,
-        name: CONTRACT_NAMES[index] || `Contract ${index + 1}`
-      })).filter(c => c.address);
+      const CONTRACT_CLASSES = (process.env.REACT_APP_CONTRACT_CLASSES || '').split(',').map(c => parseInt(c.trim(), 10));
+      
+      const fallbackOptions = CONTRACT_ADDRESSES.map((address, index) => {
+        const cls = (index < CONTRACT_CLASSES.length && !isNaN(CONTRACT_CLASSES[index])) ? CONTRACT_CLASSES[index] : 128;
+        return {
+          address,
+          name: CONTRACT_NAMES[index] || `Contract ${index + 1}`,
+          class: cls >=0 && cls <= 99999 ? cls : 128
+        };
+      }).filter(c => c.address);
+
       setContractOptions(fallbackOptions);
-      if (fallbackOptions.length > 0 && !contractAddress) {
-        setContractAddress(fallbackOptions[0].address);
+      if (fallbackOptions.length > 0) {
+        const currentSelected = fallbackOptions.find(c => c.address === contractAddress);
+        if (currentSelected) {
+            setSelectedContractClass(currentSelected.class);
+        } else if (!contractAddress) {
+            setContractAddress(fallbackOptions[0].address);
+            setSelectedContractClass(fallbackOptions[0].class);
+        }
       }
       toast.error('Failed to load contracts from server. Using fallback values.');
     } finally {
@@ -200,6 +228,7 @@ function App() {
   useEffect(() => {
     if (currentPage !== PAGES.CONTRACT_MANAGEMENT && contractAddress === "manage" && contractOptions.length > 0) {
       setContractAddress(contractOptions[0].address);
+      setSelectedContractClass(contractOptions[0].class === undefined ? 128 : contractOptions[0].class);
     }
     
     // Refresh contracts when returning from Contract Management page
@@ -295,8 +324,14 @@ function App() {
             onChange={(e) => {
               if (e.target.value === "manage") {
                 setCurrentPage(PAGES.CONTRACT_MANAGEMENT);
+                setContractAddress("manage");
               } else {
-                setContractAddress(e.target.value);
+                const selectedAddr = e.target.value;
+                setContractAddress(selectedAddr);
+                const selectedOpt = contractOptions.find(c => c.address === selectedAddr);
+                if (selectedOpt) {
+                  setSelectedContractClass(selectedOpt.class === undefined ? 128 : selectedOpt.class);
+                }
               }
             }}
             className="contract-select"
@@ -427,6 +462,7 @@ function App() {
             maxFee={MAX_FEE}
             estimatedBaseCost={ESTIMATED_BASE_COST}
             maxFeeBasedScalingFactor={MAX_FEE_SCALING_FACTOR}
+            selectedContractClass={selectedContractClass}
           />
         )}
         {currentPage === PAGES.RESULTS && (

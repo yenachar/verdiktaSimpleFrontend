@@ -24,7 +24,8 @@ async function importContractsFromEnv() {
       return [
         {
           address: "0x2E67c4D565C55E31514eDd68E42bFBb50a2C49F1",
-          name: "Default Contract"
+          name: "Default Contract",
+          class: 128
         }
       ];
     }
@@ -33,22 +34,28 @@ async function importContractsFromEnv() {
     const envVars = dotenv.parse(envContent || '');
     const addresses = envVars.REACT_APP_CONTRACT_ADDRESSES ? envVars.REACT_APP_CONTRACT_ADDRESSES.split(',') : [];
     const names = envVars.REACT_APP_CONTRACT_NAMES ? envVars.REACT_APP_CONTRACT_NAMES.split(',') : [];
+    const classes = envVars.REACT_APP_CONTRACT_CLASSES ? envVars.REACT_APP_CONTRACT_CLASSES.split(',').map(c => parseInt(c.trim(), 10)) : [];
 
     if (addresses.length === 0) {
       console.log('No contract addresses found in .env, using default contract');
       return [
         {
           address: "0x2E67c4D565C55E31514eDd68E42bFBb50a2C49F1",
-          name: "Default Contract"
+          name: "Default Contract",
+          class: 128
         }
       ];
     }
 
-    // Create contract objects from the addresses and names
-    const contracts = addresses.map((address, index) => ({
-      address: address.trim(),
-      name: index < names.length ? names[index].trim() : `Contract ${address.slice(0, 6)}`
-    }));
+    // Create contract objects from the addresses, names, and classes
+    const contracts = addresses.map((address, index) => {
+      const contractClass = (index < classes.length && !isNaN(classes[index])) ? classes[index] : 128;
+      return {
+        address: address.trim(),
+        name: index < names.length ? names[index].trim() : `Contract ${address.slice(0, 6)}`,
+        class: contractClass >= 0 && contractClass <= 99999 ? contractClass : 128
+      };
+    });
 
     console.log(`Imported ${contracts.length} contracts from .env file`);
     return contracts;
@@ -57,7 +64,8 @@ async function importContractsFromEnv() {
     return [
       {
         address: "0x2E67c4D565C55E31514eDd68E42bFBb50a2C49F1",
-        name: "Default Contract"
+        name: "Default Contract",
+        class: 128
       }
     ];
   }
@@ -99,20 +107,20 @@ async function ensureDataDir() {
 function contractsAreDifferent(envContracts, jsonContracts) {
   if (envContracts.length !== jsonContracts.length) return true;
   
-  // Create a map of addresses to names from both sources for comparison
-  const envMap = new Map(envContracts.map(c => [c.address.toLowerCase(), c.name]));
-  const jsonMap = new Map(jsonContracts.map(c => [c.address.toLowerCase(), c.name]));
+  // Create a map of addresses to names and classes from both sources for comparison
+  const envMap = new Map(envContracts.map(c => [c.address.toLowerCase(), { name: c.name, class: c.class }]));
+  const jsonMap = new Map(jsonContracts.map(c => [c.address.toLowerCase(), { name: c.name, class: c.class }]));
   
-  // Check if all env contracts exist in json with same name
-  for (const [address, name] of envMap.entries()) {
-    if (!jsonMap.has(address) || jsonMap.get(address) !== name) {
+  // Check if all env contracts exist in json with same name and class
+  for (const [address, envContractData] of envMap.entries()) {
+    if (!jsonMap.has(address) || jsonMap.get(address).name !== envContractData.name || jsonMap.get(address).class !== envContractData.class) {
       return true;
     }
   }
   
-  // Check if all json contracts exist in env with same name
-  for (const [address, name] of jsonMap.entries()) {
-    if (!envMap.has(address) || envMap.get(address) !== name) {
+  // Check if all json contracts exist in env with same name and class
+  for (const [address, jsonContractData] of jsonMap.entries()) {
+    if (!envMap.has(address) || envMap.get(address).name !== jsonContractData.name || envMap.get(address).class !== jsonContractData.class) {
       return true;
     }
   }
@@ -144,7 +152,11 @@ async function loadContracts() {
       const contractsData = JSON.parse(data);
       
       if (contractsData && contractsData.contracts && Array.isArray(contractsData.contracts)) {
-        jsonContracts = contractsData.contracts;
+        // Ensure all contracts from json have a class, default if missing
+        jsonContracts = contractsData.contracts.map(c => ({
+          ...c,
+          class: (c.class !== undefined && c.class >= 0 && c.class <= 99999) ? c.class : 128
+        }));
         
         // Check if json contracts differ from env contracts
         if (contractsAreDifferent(envContracts, jsonContracts)) {
@@ -166,12 +178,12 @@ async function loadContracts() {
     
     if (shouldUpdateJson) {
       // Update contracts.json with .env contracts
-      const data = {
-        contracts: envContracts,
+      const dataToSave = {
+        contracts: envContracts, // envContracts already includes class with defaults
         lastUpdated: new Date().toISOString()
       };
       
-      await fs.writeFile(CONTRACTS_FILE_PATH, JSON.stringify(data, null, 2));
+      await fs.writeFile(CONTRACTS_FILE_PATH, JSON.stringify(dataToSave, null, 2));
       console.log('Updated contracts.json with .env contracts');
       return envContracts;
     }
@@ -183,7 +195,8 @@ async function loadContracts() {
     return [
       {
         address: "0x2E67c4D565C55E31514eDd68E42bFBb50a2C49F1",
-        name: "Default Contract"
+        name: "Default Contract",
+        class: 128
       }
     ];
   }
@@ -209,6 +222,11 @@ async function saveContracts(contracts) {
       if (!contract.name || typeof contract.name !== 'string') {
         console.warn(`Invalid contract name for address ${contract.address}, using default name`);
         contract.name = `Contract ${contract.address.slice(0, 6)}`;
+      }
+
+      if (contract.class === undefined || typeof contract.class !== 'number' || contract.class < 0 || contract.class > 99999) {
+        console.warn(`Invalid or missing class for address ${contract.address}, defaulting to 128`);
+        contract.class = 128;
       }
       
       return true;
@@ -245,6 +263,7 @@ async function updateEnvFile(contracts) {
   try {
     const addresses = contracts.map(c => c.address).join(',');
     const names = contracts.map(c => c.name).join(',');
+    const classes = contracts.map(c => c.class === undefined ? 128 : c.class).join(',');
     
     // Path to the .env file in the client directory
     const envPath = path.resolve(__dirname, '../../client/.env');
@@ -278,6 +297,7 @@ async function updateEnvFile(contracts) {
     // Update or add contract variables
     envVars.REACT_APP_CONTRACT_ADDRESSES = addresses;
     envVars.REACT_APP_CONTRACT_NAMES = names;
+    envVars.REACT_APP_CONTRACT_CLASSES = classes;
     
     // Convert back to .env format
     const newEnvContent = Object.entries(envVars)

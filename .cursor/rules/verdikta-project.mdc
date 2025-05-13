@@ -1,0 +1,57 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# JavaScript/TypeScript Best Practices
+- Use ES6+ syntax and features.
+- Prefer `const` and `let` over `var` for variable declarations.
+- Ensure type safety by using TypeScript's type annotations.
+- Avoid using the `any` type; strive for precise type definitions.
+- Implement asynchronous code using `async/await` syntax.
+- Utilize linters like ESLint to maintain code quality.
+
+# React and Next.js Best Practices
+- Develop functional components and utilize hooks for state and side effects.
+- Structure components logically, separating concerns appropriately.
+- Use Next.js's data fetching methods (`getStaticProps`, `getServerSideProps`) as per the use case.
+- Optimize performance by implementing code splitting and lazy loading.
+- Ensure accessibility (a11y) in all components.
+- Manage state effectively using Context API or state management libraries when necessary.
+
+# Node.js Best Practices
+- Structure the project following established conventions (e.g., MVC pattern).
+- Handle asynchronous operations using `async/await`.
+- Perform input validation to prevent security vulnerabilities.
+- Manage environment configurations securely.
+- Implement logging for monitoring and debugging purposes.
+- Utilize middleware functions to handle cross-cutting concerns.
+
+# Blockchain Technologies Best Practices
+- Write secure and efficient smart contracts, following the latest security guidelines.
+- Use established libraries and frameworks for blockchain interactions.
+- Ensure proper handling of private keys and sensitive data.
+- Stay updated with the latest developments and best practices in blockchain technology.
+
+# Objective of verdikta project
+- The Verdikta project is creating a new blockchain based on Base/ETH that allows client applications to query decentralized AI-Inference providers (as Chainlink Nodes) with query packages that are stored on IPFS in order to obtain an AI-deliberated judgement on a question or dispute presented to the blockchain.  This judgement can then be used in a smart contract to trigger actions, such as payments from an escrow wallet.   Smart contracts are written in sol, application code is in Typescript/Javascript, and installers are bash shell scripts.   Currently the project is being developed in four different repositories, and you will be working on one of these at a time.   
+* verdikta-external-adapter - The Chainlink External adapter that allows the Chainlink Jobs to call the AI node.
+* ai-node-development - AI-Enabled app with Multi-Model Deliberation. This is a Next.js project that serves as a platform for AI-enabled web applications with advanced deliberation capabilities. It demonstrates integration with various Language Model (LLM) providers, including open-source models, OpenAI, and Anthropic's Claude.
+* verdiktaSimpleFrontend - An example web-based front end application that interacts with the blockchain.  It allows users create queries, select the AIs to use for deliberation, add attachments to the query package, and articulate the query to ask the AI panel.  The AI panel will return a score vector and a justification.  The score vector has the length of the number of outcomes set by the user during input and the total value of all outcomes is 1M.   Example: 'Assess this statement: The Sky is Blue'.  Outcomes: True, False.  Returned result json:
+{
+  "scores": [
+    {
+      "outcome": "True",
+      "score": 900000
+    },
+    {
+      "outcome": "False",
+      "score": 100000
+    }
+  ],
+  "justification": "The aggregated decision vector of [900000, 100000] clearly indicates a significant preference for the first outcome, likely representing the assertion \"The sky is blue,\" versus the second outcome, likely representing \"The sky is not blue.\" This significant skew in the decision vector suggests a very high confidence in the truth of the first outcome. Here's a comprehensive justification for this result based on both the decision vector and the rationale provided by model gpt-4o:\n\n1. **Scientific Explanation of Blue Sky:** Under normal weather conditions, the clear sky appears blue during the daytime because of Rayleigh scattering. Sunlight, which appears white, is composed of various colors, each with different wavelengths.   ....
+  ...
+}
+
+

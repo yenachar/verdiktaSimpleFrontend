@@ -141,6 +141,7 @@ function RunQuery({
   maxFee,
   estimatedBaseCost,
   maxFeeBasedScalingFactor,
+  selectedContractClass,
 }) {
   const [activeTooltipId, setActiveTooltipId] = useState(null);
   const [textAddendum, setTextAddendum] = useState('');
@@ -308,7 +309,7 @@ const handleRunQuery = async () => {
         maxFee,
         estimatedBaseCost,
         maxFeeBasedScalingFactor,
-	128, // standard class for now
+	selectedContractClass === undefined ? 128 : selectedContractClass,
         { 
           gasLimit: 5000000, // high current gas limit
           maxFeePerGas: adjustedMaxFee,

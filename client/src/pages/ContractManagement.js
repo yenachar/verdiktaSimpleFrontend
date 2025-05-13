@@ -9,9 +9,9 @@ const ContractManagement = ({ onContractsUpdated }) => {
   const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [newContract, setNewContract] = useState({ address: '', name: '' });
+  const [newContract, setNewContract] = useState({ address: '', name: '', class: 128 });
   const [isEditing, setIsEditing] = useState(null);
-  const [editForm, setEditForm] = useState({ address: '', name: '' });
+  const [editForm, setEditForm] = useState({ address: '', name: '', class: 128 });
 
   // Fetch contracts on component mount
   useEffect(() => {
@@ -25,10 +25,15 @@ const ContractManagement = ({ onContractsUpdated }) => {
       const data = await response.json();
       
       if (data.success) {
-        setContracts(data.contracts);
+        // Ensure all contracts have a class, default if missing
+        const contractsWithDefaults = data.contracts.map(c => ({
+          ...c,
+          class: (c.class === undefined || typeof c.class !== 'number' || c.class < 0 || c.class > 99999) ? 128 : c.class
+        }));
+        setContracts(contractsWithDefaults);
         // Always notify parent component about contract updates
         if (onContractsUpdated) {
-          onContractsUpdated(data.contracts);
+          onContractsUpdated(contractsWithDefaults);
         }
       } else {
         setError(data.error || 'Failed to fetch contracts');
@@ -50,6 +55,12 @@ const ContractManagement = ({ onContractsUpdated }) => {
       toast.error('Address and name are required');
       return;
     }
+
+    const contractClass = parseInt(newContract.class, 10);
+    if (isNaN(contractClass) || contractClass < 0 || contractClass > 99999) {
+      toast.error('Class must be a number between 0 and 99999.');
+      return;
+    }
     
     try {
       const response = await fetch(`${SERVER_URL}/api/contracts`, {
@@ -57,14 +68,14 @@ const ContractManagement = ({ onContractsUpdated }) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(newContract),
+        body: JSON.stringify({ ...newContract, class: contractClass }),
       });
       
       const data = await response.json();
       
       if (data.success) {
         toast.success('Contract added successfully');
-        setNewContract({ address: '', name: '' });
+        setNewContract({ address: '', name: '', class: 128 });
         await fetchContracts();
       } else {
         toast.error(data.error || 'Failed to add contract');
@@ -101,7 +112,7 @@ const ContractManagement = ({ onContractsUpdated }) => {
 
   const startEdit = (contract) => {
     setIsEditing(contract.address);
-    setEditForm({ ...contract });
+    setEditForm({ ...contract, class: contract.class === undefined ? 128 : contract.class });
   };
 
   const cancelEdit = () => {
@@ -120,6 +131,12 @@ const ContractManagement = ({ onContractsUpdated }) => {
       toast.error('Name is required');
       return;
     }
+
+    const contractClass = parseInt(editForm.class, 10);
+    if (isNaN(contractClass) || contractClass < 0 || contractClass > 99999) {
+      toast.error('Class must be a number between 0 and 99999.');
+      return;
+    }
     
     try {
       // Find the contract index
@@ -127,10 +144,11 @@ const ContractManagement = ({ onContractsUpdated }) => {
       const index = updatedContracts.findIndex(c => c.address === isEditing);
       
       if (index !== -1) {
-        // Only name can be edited, address remains the same
+        // Update name and class, address remains the same
         updatedContracts[index] = { 
-          address: updatedContracts[index].address, 
-          name: editForm.name 
+          ...updatedContracts[index], // Keep other potential fields
+          name: editForm.name,
+          class: contractClass
         };
         
         const response = await fetch(`${SERVER_URL}/api/contracts`, {
@@ -186,6 +204,19 @@ const ContractManagement = ({ onContractsUpdated }) => {
               className="input-field"
             />
           </div>
+          <div className="form-group">
+            <label htmlFor="class">Class (0-99999):</label>
+            <input
+              type="number"
+              id="class"
+              value={newContract.class}
+              onChange={(e) => setNewContract({ ...newContract, class: e.target.value })}
+              placeholder="128"
+              min="0"
+              max="99999"
+              className="input-field"
+            />
+          </div>
           <button type="submit" className="button add-button">Add Contract</button>
         </form>
       </div>
@@ -223,6 +254,18 @@ const ContractManagement = ({ onContractsUpdated }) => {
                         className="input-field"
                       />
                     </div>
+                    <div className="form-group">
+                      <label>Class (0-99999):</label>
+                      <input
+                        type="number"
+                        name="class"
+                        value={editForm.class}
+                        onChange={handleEditChange}
+                        min="0"
+                        max="99999"
+                        className="input-field"
+                      />
+                    </div>
                     <div className="button-group">
                       <button type="submit" className="button save-button">Save</button>
                       <button type="button" onClick={cancelEdit} className="button secondary">Cancel</button>
@@ -233,6 +276,7 @@ const ContractManagement = ({ onContractsUpdated }) => {
                     <div className="contract-info">
                       <strong className="contract-name">{contract.name}</strong>
                       <code className="contract-address">{contract.address}</code>
+                      <span className="contract-class">Class: {contract.class === undefined ? 128 : contract.class}</span>
                     </div>
                     <div className="contract-actions">
                       <button 

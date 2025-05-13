@@ -54,6 +54,21 @@ router.put('/', async (req, res) => {
           error: `Invalid Ethereum address: ${contract.address}`
         });
       }
+
+      // Validate class
+      if (contract.class !== undefined) {
+        const contractClass = parseInt(contract.class, 10);
+        if (isNaN(contractClass) || contractClass < 0 || contractClass > 99999) {
+          return res.status(400).json({
+            success: false,
+            error: `Invalid class value for ${contract.address}. Must be an integer between 0 and 99999.`
+          });
+        }
+        contract.class = contractClass; // Ensure it's a number
+      } else {
+        // Default class if not provided during an update (though ideally it should always be present)
+        contract.class = 128;
+      }
     }
     
     await saveContracts(contracts);
@@ -79,7 +94,7 @@ router.put('/', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
-    const { address, name } = req.body;
+    const { address, name, class: contractClassInput } = req.body;
     
     if (!address || !name) {
       return res.status(400).json({
@@ -94,6 +109,18 @@ router.post('/', async (req, res) => {
         error: `Invalid Ethereum address: ${address}`
       });
     }
+
+    let contractClass = 128;
+    if (contractClassInput !== undefined) {
+      const parsedClass = parseInt(contractClassInput, 10);
+      if (isNaN(parsedClass) || parsedClass < 0 || parsedClass > 99999) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid class value. Must be an integer between 0 and 99999.'
+        });
+      }
+      contractClass = parsedClass;
+    }
     
     const contracts = await loadContracts();
     
@@ -106,14 +133,14 @@ router.post('/', async (req, res) => {
     }
     
     // Add the new contract
-    contracts.push({ address, name });
+    contracts.push({ address, name, class: contractClass });
     
     await saveContracts(contracts);
     
     res.status(201).json({
       success: true,
       message: 'Contract added successfully',
-      contract: { address, name }
+      contract: { address, name, class: contractClass }
     });
   } catch (error) {
     console.error('Error adding contract:', error);
