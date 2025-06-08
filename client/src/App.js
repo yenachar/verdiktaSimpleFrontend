@@ -150,7 +150,7 @@ function App() {
 
   // Default aggregator parameters
   const ALPHA = 500;
-  const MAX_FEE = parseEther("0.08"); // returns a bigint
+  const MAX_FEE = parseEther("0.01"); // returns a bigint
   const BASE_FEE_PCT = 1; // 1%
   const ESTIMATED_BASE_COST = MAX_FEE * BigInt(BASE_FEE_PCT) / 100n; // Using native BigInt arithmetic
   const MAX_FEE_SCALING_FACTOR = 10;
