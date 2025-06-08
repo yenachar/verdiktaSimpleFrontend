@@ -13,6 +13,7 @@ import {
   switchToBaseSepolia,
   // checkContractFunding,
 } from '../utils/contractUtils';
+import { waitForFulfilOrTimeout } from '../utils/timeoutUtils';
 
 // Import the LINK token ABI (make sure this file exists at src/utils/LINKTokenABI.json)
 import LINK_TOKEN_ABI from '../utils/LINKTokenABI.json';
@@ -147,6 +148,16 @@ function RunQuery({
   const [textAddendum, setTextAddendum] = useState('');
   // Add state to track if we're showing the default CID value
   const [showingDefaultCid, setShowingDefaultCid] = useState(queryPackageCid === '' || queryPackageCid === undefined);
+
+  // Timer
+  const [secondsLeft, setSecondsLeft] = useState(null);   // null = countdown not active
+  useEffect(() => {
+    if (secondsLeft === null) return;          // countdown inactive
+    const id = setInterval(() => {
+      setSecondsLeft(s => (s > 0 ? s - 1 : 0));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [secondsLeft]);
 
   // Update showingDefaultCid when selectedMethod changes to 'ipfs'
   useEffect(() => {
@@ -337,16 +348,42 @@ const handleRunQuery = async () => {
         throw new Error('RequestAIEvaluation event not found in transaction receipt');
       }
       const requestId = event.args.requestId;
-      await pollForEvaluationResults(
-        contract,
-        requestId,
-        setTransactionStatus,
-        setOutcomes,
-        setJustification,
-        setResultCid,
-        setResultTimestamp,
-        setOutcomeLabels
-      );
+
+/* ----- Start a five-minute countdown in the UI ----- */
+setSecondsLeft(300);          // match responseTimeoutSeconds
+
+/* ----- Build fee overrides once, reuse for timeout tx ----- */
+const feeOverrides = {
+  gasLimit: 150_000,          // plentiful; the function is cheap
+  maxFeePerGas: adjustedMaxFee,
+  maxPriorityFeePerGas: adjustedPriorityFee
+};
+
+/* ----- Consolidate the callback setters so we can pass them as one object ----- */
+const pollCallbacks = {
+  pollForEvaluationResults,
+  setTransactionStatus,
+  setOutcomes,
+  setJustification,
+  setResultCid,
+  setResultTimestamp,
+  setOutcomeLabels
+};
+
+const result = await waitForFulfilOrTimeout({
+  contract,
+  requestId,
+  pollCallbacks,
+  feeOverrides,
+  setTransactionStatus
+});
+
+if (result.status === 'timed-out') {
+  // Inform the UI that the request failed
+  setJustification?.('⚠️  The oracle did not respond in time. Request marked as FAILED.');
+  setOutcomes?.([]);
+}
+
       // 6) Navigate to the RESULTS page on success
       setTransactionStatus('');
       setCurrentPage(PAGES.RESULTS);
@@ -512,14 +549,17 @@ This blockchain operation requires LINK tokens to pay for the AI jury service. P
             onClick={handleRunQuery}
             disabled={loadingResults || (selectedMethod === 'file' && !queryPackageFile)}
           >
-            {loadingResults ? (
-              <>
-                <span className="spinner"></span>
-                {transactionStatus || 'Processing...'}
-              </>
-            ) : (
-              'Run Query'
-            )}
+	  {loadingResults ? (
+            <>
+              <span className="spinner"></span>
+              {transactionStatus || 'Processing…'}
+              {secondsLeft !== null && secondsLeft >= 0 && (
+                <>  ({secondsLeft}s)</>
+              )}
+            </>
+          ) : (
+            'Run Query'
+          )}
           </button>
         </div>
       </div>
