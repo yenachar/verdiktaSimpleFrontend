@@ -197,6 +197,11 @@ const handleRunQuery = async () => {
     const config = await contract.getContractConfig();
     const linkTokenAddress = config.linkAddr;
 
+    // ❶ read the on-chain responseTimeoutSeconds so UI stays in sync
+    const responseTimeoutSeconds = Number(
+      await contract.responseTimeoutSeconds()
+    );
+
       // 3) Process query package based on selected method (config, file, or IPFS)
       let cid;
       let firstCid; // For fetching package details
@@ -354,7 +359,7 @@ setSecondsLeft(300);          // match responseTimeoutSeconds
 
 /* ----- Build fee overrides once, reuse for timeout tx ----- */
 const feeOverrides = {
-  gasLimit: 150_000,          // plentiful; the function is cheap
+  gasLimit: 500_000,          // plentiful; the function is cheap
   maxFeePerGas: adjustedMaxFee,
   maxPriorityFeePerGas: adjustedPriorityFee
 };
@@ -375,7 +380,8 @@ const result = await waitForFulfilOrTimeout({
   requestId,
   pollCallbacks,
   feeOverrides,
-  setTransactionStatus
+  setTransactionStatus,
+  responseTimeoutSeconds
 });
 
 if (result.status === 'timed-out') {
