@@ -43,7 +43,7 @@ async function pollForEvaluationResults(
 ) {
   setTransactionStatus?.('Waiting for evaluation results...');
   let attempts = 0;
-  const maxAttempts = 60;
+  const maxAttempts = 72; // 6 min. Graceful timeout should happen after 5 min.
   let foundEvaluation = null;
   while (!foundEvaluation && attempts < maxAttempts) {
     attempts++;
