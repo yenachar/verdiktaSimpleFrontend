@@ -327,7 +327,7 @@ const handleRunQuery = async () => {
         maxFeeBasedScalingFactor,
 	selectedContractClass === undefined ? 128 : selectedContractClass,
         { 
-          gasLimit: 5000000, // high current gas limit
+          gasLimit: 4500000, // high current gas limit
           maxFeePerGas: adjustedMaxFee,
           maxPriorityFeePerGas: adjustedPriorityFee
         }
