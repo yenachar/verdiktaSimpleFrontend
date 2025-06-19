@@ -317,6 +317,13 @@ const handleRunQuery = async () => {
       const cidArray = cid.split(',').map(c => c.trim()).filter(c => c.length > 0);
       console.log('Sending CIDs to contract:', cidArray);
 
+      // Random delay to ease resource contention in the events of many simultaneous calls or repeated calls
+      const addressSeed = parseInt(walletAddress.slice(-4), 16);
+      const timeSeed = Math.floor(Date.now() / 600000); // constant over 10-minute windows
+      const combinedSeed = (addressSeed + timeSeed) % 1000;
+      const randomDelay = (combinedSeed % 200) + 10; // 10-210ms delay
+      await new Promise(resolve => setTimeout(resolve, randomDelay));
+
       setTransactionStatus?.('Sending transaction...');
       const tx = await contract.requestAIEvaluationWithApproval(
         cidArray,
