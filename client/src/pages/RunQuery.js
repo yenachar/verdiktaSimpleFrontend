@@ -128,8 +128,11 @@ async function topUpLinkAllowance({
   spender,
   linkTokenAddress,
   setTransactionStatus,
-  STALE_SECONDS   = 1800,      // 1/2 hour
-  SEARCH_WINDOW   = 7_200      // look back this many blocks (~4 hours on Base Sepolia)
+  STALE_SECONDS   = 1800,      // 1/2 hour, after this approval is considered stale
+  SEARCH_WINDOW   = 7_200,     // look back this many blocks seeking last approval (~4 hours on Base Sepolia)
+  PAYMENT_MULTIPLIER = 2,      // a >=1 multiplier to give a margin that helps support simultaneous calls
+  PAYMENT_MIN = parseUnits("5", 17), // minimum to reserve
+  PAYMENT_MAX = parseUnits("2", 18)  // maximum to reserve
 }) {
   const signer = await provider.getSigner();
   const link   = new ethers.Contract(linkTokenAddress, LINK_TOKEN_ABI, signer);
@@ -154,21 +157,33 @@ async function topUpLinkAllowance({
 
   // 3.  Decide newTotal 
   let newTotal;
+  const requiredExtraWithMargin = BigInt(PAYMENT_MULTIPLIER)*requiredExtra;
   if (!hasHistory) {
-    // First approval over window → add this fee to avoid race conditions
-    newTotal = current + requiredExtra;
-    setTransactionStatus?.('Approving LINK to start queries…');
+    // First approval over window 
+    newTotal = requiredExtraWithMargin;
+    newTotal<BigInt(PAYMENT_MIN) && (newTotal=BigInt(PAYMENT_MIN));
+    setTransactionStatus?.('Approving LINK to begin (using ${PAYMENT_MULTIPLIER}×)…');
   } else if (ageSecs > STALE_SECONDS) {
     // Old approval exists → replace with just this fee
-    newTotal = requiredExtra;
+    newTotal = requiredExtraWithMargin;
+    newTotal<BigInt(PAYMENT_MIN) && (newTotal=BigInt(PAYMENT_MIN));
     setTransactionStatus?.('Replacing stale LINK allowance…');
   } else {
     // Recent approval → add on top
-    newTotal = current + requiredExtra;
-    setTransactionStatus?.('Topping-up active LINK allowance…');
+    newTotal = current + requiredExtraWithMargin;
+    newTotal<BigInt(PAYMENT_MIN) && (newTotal=BigInt(PAYMENT_MIN));
+    if(newTotal>BigInt(PAYMENT_MAX))
+    {
+      newTotal = BigInt(PAYMENT_MAX);
+      setTransactionStatus?.('Topping-up active LINK allowance to maximum…');
+    }
+    else
+    {
+      setTransactionStatus?.('Topping-up active LINK allowance…');
+    }
   }
 
-  // 4.  Send approve() only if something actually changes 
+  // 4.  Send approve() 
   console.log( `Allowance ${ethers.formatUnits(current, 18)} → `
     + `${ethers.formatUnits(newTotal, 18)} LINK`);
   const tx = await link.approve(spender, newTotal);
