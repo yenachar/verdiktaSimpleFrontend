@@ -162,7 +162,7 @@ async function topUpLinkAllowance({
     // First approval over window 
     newTotal = requiredExtraWithMargin;
     newTotal<BigInt(PAYMENT_MIN) && (newTotal=BigInt(PAYMENT_MIN));
-    setTransactionStatus?.('Approving LINK to begin (using ${PAYMENT_MULTIPLIER}×)…');
+    setTransactionStatus?.(`Approving LINK to begin (using ${PAYMENT_MULTIPLIER}× margin with a minimum)…`);
   } else if (ageSecs > STALE_SECONDS) {
     // Old approval exists → replace with just this fee
     newTotal = requiredExtraWithMargin;
