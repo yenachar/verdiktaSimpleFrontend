@@ -1,5 +1,5 @@
 {
-  "query": "P=NP.  ",
+  "query": "P=NP",
   "outcomes": [
     "True",
     "False"
