@@ -68,6 +68,10 @@ async function pollForEvaluationResults(
   setResultCid?.(justificationCid);
   setTransactionStatus?.('Fetching justification from server...');
   try {
+    if (!justificationCid) {
+      // Still in commit stage – keep polling
+      return { status: 'pending' };
+    }
     const response = await fetchWithRetry(justificationCid);
     const justificationText = await tryParseJustification(
       response,
@@ -470,7 +474,7 @@ try {
       const feeData = await provider.getFeeData();
 
       // get maxPriorityFeePerGas and maxFeePerGas with a fallback method for old nodes and implementations
-      const fallbackGasPrice = feeData.gasPrice ? feeData.gasPrice * BigInt(1000) : undefined;
+      const fallbackGasPrice = feeData.gasPrice ? feeData.gasPrice * BigInt(10) : undefined;
       const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas ? feeData.maxPriorityFeePerGas : fallbackGasPrice;
       const maxFeePerGas = feeData.maxFeePerGas ? feeData.maxFeePerGas : fallbackGasPrice;
 
@@ -484,7 +488,7 @@ try {
       let adjustedPriorityFee = (maxPriorityFeePerGas * BigInt(priorityFeeMultiplier)) / BigInt(divider) / BigInt(1000);
       let adjustedMaxFee = (maxFeePerGas * BigInt(maxFeeMultiplier)) / BigInt(divider) / BigInt(1000);
 
-      const FLOOR_PRIORITY = parseUnits('1', 'gwei');     // minimum tip
+      const FLOOR_PRIORITY = parseUnits('0.01', 'gwei');     // minimum tip
 
       if (adjustedPriorityFee < FLOOR_PRIORITY) adjustedPriorityFee = FLOOR_PRIORITY;
       if (adjustedMaxFee      < adjustedPriorityFee + FLOOR_PRIORITY /* headroom */) {
