@@ -1,0 +1,7 @@
+{
+  "query": "P=NP.  ",
+  "outcomes": [
+    "True",
+    "False"
+  ]
+}
