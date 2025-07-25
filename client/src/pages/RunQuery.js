@@ -85,6 +85,7 @@ async function pollForEvaluationResults(
     console.error('Justification fetch error:', error);
     setJustification?.(`Error loading justification: ${error.message}`);
   }
+  return { status: 'fulfilled' };
 }
 
 /**
