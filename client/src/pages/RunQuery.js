@@ -22,7 +22,7 @@ import LINK_TOKEN_ABI from '../utils/LINKTokenABI.json';
 const LINK_TOKEN_ADDRESS = "0x779877A7B0D9E8603169DdbD7836e478b4624789";
 
 // Default query package CID for example/testing
-const DEFAULT_QUERY_CID = 'QmSnynnZVufbeb9GVNLBjxBJ45FyHgjPYUHTvMK5VmQZcS';
+const DEFAULT_QUERY_CID = 'QmSHXfBcrfFf4pnuRYCbHA8rjKkDh1wjqas3Rpk3a2uAWH';
 
 // Helper function to get the first CID from a comma-separated list
 const getFirstCid = (cidString) => {
