@@ -30,6 +30,25 @@ const getFirstCid = (cidString) => {
   return cidString.split(',')[0].trim();
 };
 
+/**
+ * Pick the best provider for read‑only calls:
+ * 1 → MetaMask if installed
+ * 2 → any other injected provider
+ * 3 → fallback to public RPC
+ */
+function getReadOnlyProvider() {
+  // 1. look for MetaMask in the multi‑provider array
+  const injected = window.ethereum?.providers?.find(p => p.isMetaMask);
+  if (injected) return new ethers.BrowserProvider(injected);
+
+  // 2. single injected provider (does not work with Brave) 
+  if (window.ethereum && window.ethereum.isBraveWallet === false) 
+    return new ethers.BrowserProvider(window.ethereum);
+
+  // 3. no wallet at all – use public Base Sepolia RPC
+  return new ethers.JsonRpcProvider("https://sepolia.base.org");
+}
+
 // Helper function to poll for evaluation results
 async function pollForEvaluationResults(
   contract,
@@ -312,12 +331,14 @@ const handleRunQuery = async () => {
     const signer = await provider.getSigner();
     const writeContract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
     // const readContract  = writeContract.connect(provider); 
-    const readContract = new ethers.Contract(contractAddress, CONTRACT_ABI,
-       // any public Base Sepolia RPC; use your favourite, e.g. Alchemy, Ankr, etc.
-       new ethers.JsonRpcProvider("https://sepolia.base.org") );
+    // const readContract = new ethers.Contract(contractAddress, CONTRACT_ABI,
+    //   // any public Base Sepolia RPC; use your favourite, e.g. Alchemy, Ankr, etc.
+    //   new ethers.JsonRpcProvider("https://sepolia.base.org") );
     // const injected = window.ethereum.providers?.find(p => p.isMetaMask) ?? window.ethereum;
     // const readContract = new ethers.Contract(contractAddress, CONTRACT_ABI,
     //                                     new ethers.BrowserProvider(injected));
+    const readContract  = new ethers.Contract(
+       contractAddress, CONTRACT_ABI, getReadOnlyProvider());
 
     // 2) Check contract funding
     // setTransactionStatus?.('Checking contract funding...');
