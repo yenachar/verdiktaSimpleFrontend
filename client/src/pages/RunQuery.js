@@ -449,7 +449,7 @@ setSecondsLeft(300);          // match responseTimeoutSeconds
 
 /* ----- Build fee overrides once, reuse for timeout tx ----- */
 const feeOverrides = {
-  gasLimit: 500_000,          // plentiful; the function is cheap
+  gasLimit: 900_000,          // plentiful; the function is cheap
   maxFeePerGas: adjustedMaxFee,
   maxPriorityFeePerGas: adjustedPriorityFee
 };
