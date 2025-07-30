@@ -310,17 +310,24 @@ const handleRunQuery = async () => {
     let provider = new ethers.BrowserProvider(window.ethereum);
     provider = await switchToBaseSepolia(provider);
     const signer = await provider.getSigner();
-    const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
+    const writeContract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
+    // const readContract  = writeContract.connect(provider); 
+    const readContract = new ethers.Contract(contractAddress, CONTRACT_ABI,
+       // any public Base Sepolia RPC; use your favourite, e.g. Alchemy, Ankr, etc.
+       new ethers.JsonRpcProvider("https://sepolia.base.org") );
+    // const injected = window.ethereum.providers?.find(p => p.isMetaMask) ?? window.ethereum;
+    // const readContract = new ethers.Contract(contractAddress, CONTRACT_ABI,
+    //                                     new ethers.BrowserProvider(injected));
 
     // 2) Check contract funding
     // setTransactionStatus?.('Checking contract funding...');
     // await checkContractFunding(contract, provider);
-    const config = await contract.getContractConfig();
+    const config = await readContract.getContractConfig();
     const linkTokenAddress = config.linkAddr;
 
     // ❶ read the on-chain responseTimeoutSeconds so UI stays in sync
     const responseTimeoutSeconds = Number(
-      await contract.responseTimeoutSeconds()
+      await readContract.responseTimeoutSeconds()
     );
 
       // 3) Process query package based on selected method (config, file, or IPFS)
@@ -451,7 +458,7 @@ try {
 */
 // 4) Make sure the contract has enough LINK allowance
 try {
-  const feeForThisRequest = await contract.maxTotalFee(maxFee);
+  const feeForThisRequest = await readContract.maxTotalFee(maxFee);
   await topUpLinkAllowance({
     requiredExtra:     feeForThisRequest,
     provider,
@@ -508,7 +515,7 @@ try {
       await new Promise(resolve => setTimeout(resolve, randomDelay));
 
       setTransactionStatus?.('Sending transaction...');
-      const tx = await contract.requestAIEvaluationWithApproval(
+      const tx = await writeContract.requestAIEvaluationWithApproval(
         cidArray,
 	textAddendum.trim(),
         alpha,
@@ -533,7 +540,7 @@ try {
       const event = receipt.logs
         .map(log => {
           try {
-            return contract.interface.parseLog({ topics: log.topics, data: log.data });
+            return writeContract.interface.parseLog({ topics: log.topics, data: log.data });
           } catch (e) {
             return null;
           }
@@ -566,7 +573,7 @@ const pollCallbacks = {
 };
 
 const result = await waitForFulfilOrTimeout({
-  contract,
+  contract: readContract,
   requestId,
   pollCallbacks,
   feeOverrides,
