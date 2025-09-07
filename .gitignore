@@ -6,6 +6,8 @@ server/.env
 client/src/server.cert
 client/src/server.key
 server/data/contracts.json
+client/client.log
+server/server.log
 # package-lock.json # It's generally recommended to commit package-lock.json
 # package.json # package.json should definitely be committed
 
