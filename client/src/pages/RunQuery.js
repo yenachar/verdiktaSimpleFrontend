@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 // Import ethers along with parseEther from ethers v6 (we no longer import BigNumber)
 import { ethers, parseEther, parseUnits } from 'ethers';
+import { RPC_URL } from '../utils/contractUtils';
 import { PAGES } from '../App';
 import { fetchWithRetry, tryParseJustification } from '../utils/fetchUtils';
 import { createQueryPackageArchive } from '../utils/packageUtils';
@@ -46,7 +47,7 @@ function getReadOnlyProvider() {
     return new ethers.BrowserProvider(window.ethereum);
 
   // 3. no wallet at all – use public Base Sepolia RPC
-  return new ethers.JsonRpcProvider("https://sepolia.base.org");
+  return new ethers.JsonRpcProvider(RPC_URL);
 }
 
 // Helper function to poll for evaluation results
