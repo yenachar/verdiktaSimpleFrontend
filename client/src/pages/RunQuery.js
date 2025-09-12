@@ -11,16 +11,14 @@ import { uploadToServer } from '../utils/serverUtils';
 import { getAugmentedQueryText } from '../utils/queryUtils';
 import {
   CONTRACT_ABI,
-  switchToBaseSepolia,
-  // checkContractFunding,
+  ensureCorrectNetwork,
+  CURRENT_NETWORK,
 } from '../utils/contractUtils';
 import { waitForFulfilOrTimeout } from '../utils/timeoutUtils';
+import { ContractDebugger } from '../utils/contractDebugger';
 
 // Import the LINK token ABI (make sure this file exists at src/utils/LINKTokenABI.json)
 import LINK_TOKEN_ABI from '../utils/LINKTokenABI.json';
-
-// Set the LINK token address for your network (example for Sepolia)
-const LINK_TOKEN_ADDRESS = "0x779877A7B0D9E8603169DdbD7836e478b4624789";
 
 // Default query package CID for example/testing
 const DEFAULT_QUERY_CID = 'QmSHXfBcrfFf4pnuRYCbHA8rjKkDh1wjqas3Rpk3a2uAWH';
@@ -42,12 +40,13 @@ function getReadOnlyProvider() {
   const injected = window.ethereum?.providers?.find(p => p.isMetaMask);
   if (injected) return new ethers.BrowserProvider(injected);
 
-  // 2. single injected provider (does not work with Brave) 
-  if (window.ethereum && window.ethereum.isBraveWallet === false) 
+  // 2. single injected provider (does not work with Brave)
+  if (window.ethereum && window.ethereum.isBraveWallet === false)
     return new ethers.BrowserProvider(window.ethereum);
 
   // 3. no wallet at all – use public Base Sepolia RPC
   return new ethers.JsonRpcProvider(RPC_URL);
+
 }
 
 // Helper function to poll for evaluation results
@@ -129,7 +128,7 @@ async function topUpLinkAllowance({
   const signer = await provider.getSigner();
   const link   = new ethers.Contract(linkTokenAddress, LINK_TOKEN_ABI, signer);
 
-  // 1.  Find the age of the last Approval(owner, spender, …) 
+  // 1.  Find the age of the last Approval(owner, spender, …)
   const filter       = link.filters.Approval(owner, spender);
   const latestBlock  = await provider.getBlockNumber();
   const fromBlock    = Math.max(0, latestBlock - SEARCH_WINDOW);
@@ -144,14 +143,14 @@ async function topUpLinkAllowance({
     ageSecs = Math.floor(Date.now() / 1000) - lastBlock.timestamp;
   }
 
-  // 2.  Current allowance 
-  const current = await link.allowance(owner, spender); 
+  // 2.  Current allowance
+  const current = await link.allowance(owner, spender);
 
-  // 3.  Decide newTotal 
+  // 3.  Decide newTotal
   let newTotal;
   const requiredExtraWithMargin = BigInt(PAYMENT_MULTIPLIER)*requiredExtra;
   if (!hasHistory) {
-    // First approval over window 
+    // First approval over window
     newTotal = requiredExtraWithMargin;
     newTotal<BigInt(PAYMENT_MIN) && (newTotal=BigInt(PAYMENT_MIN));
     setTransactionStatus?.(`Approving LINK to begin (using ${PAYMENT_MULTIPLIER}× margin with a minimum)…`);
@@ -175,7 +174,7 @@ async function topUpLinkAllowance({
     }
   }
 
-  // 4.  Send approve() 
+  // 4.  Send approve()
   console.log( `Allowance ${ethers.formatUnits(current, 18)} → `
     + `${ethers.formatUnits(newTotal, 18)} LINK`);
   const tx = await link.approve(spender, newTotal);
@@ -225,6 +224,9 @@ function RunQuery({
   const [textAddendum, setTextAddendum] = useState('');
   // Add state to track if we're showing the default CID value
   const [showingDefaultCid, setShowingDefaultCid] = useState(queryPackageCid === '' || queryPackageCid === undefined);
+  // Add state to track errors and enable debug functionality
+  const [hasError, setHasError] = useState(false);
+  const [lastError, setLastError] = useState(null);
 
   // Timer
   const [secondsLeft, setSecondsLeft] = useState(null);   // null = countdown not active
@@ -252,6 +254,54 @@ function RunQuery({
     }
   };
 
+const debugContractIssues = async () => {
+  try {
+    console.log('🔍 Running contract diagnostics...');
+
+    // Show context about the last error if available
+    let errorContext = '';
+    if (lastError) {
+      errorContext = `\n🚨 Last Error Context:\n${lastError.message}\n\n`;
+      console.log('📋 Last Error Details:', lastError);
+    }
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const contractDebugger = new ContractDebugger(provider, contractAddress, walletAddress);
+
+    // Get actual parameters from current state
+    const currentCid = selectedMethod === 'ipfs'
+      ? (showingDefaultCid ? DEFAULT_QUERY_CID : queryPackageCid.trim())
+      : 'QmSnynnZVufbeb9GVNLBjxBJ45FyHgjPYUHTvMK5VmQZcS';
+
+    const report = await contractDebugger.generateDebugReport(
+      [getFirstCid(currentCid)], // Use actual CID from current state
+      textAddendum.trim(),
+      alpha || 500, // Use actual alpha value
+      maxFee || parseUnits("0.01", 18), // Use actual maxFee
+      estimatedBaseCost || parseUnits("0.0001", 18), // Use actual estimatedBaseCost
+      maxFeeBasedScalingFactor || 10, // Use actual scaling factor
+      selectedContractClass || 128
+    );
+
+    console.log('📋 Full Debug Report:', report);
+
+    // Show critical issues to user with error context
+    const criticalIssues = report.recommendations.filter(r => r.priority === 'CRITICAL' || r.priority === 'HIGH');
+    if (criticalIssues.length > 0) {
+      const issueText = criticalIssues.map(issue => `• ${issue.issue}: ${issue.solution}`).join('\n');
+      alert(`🚨 Contract Issues Detected:${errorContext}${issueText}\n\nCheck console for full debug report and error details.`);
+    } else if (lastError) {
+      alert(`🔍 Debug Analysis:${errorContext}✅ No critical contract issues detected.\nThe error may be related to network conditions, gas settings, or transaction timing.\n\nCheck console for full debug report and error details.`);
+    } else {
+      alert('✅ No critical issues detected. Check console for full report.');
+    }
+
+  } catch (error) {
+    console.error('Debug failed:', error);
+    alert(`Debug failed: ${error.message}`);
+  }
+};
+
 const handleRunQuery = async () => {
   if (!isConnected && selectedMethod !== 'config') {
     alert('Please connect your wallet first');
@@ -261,20 +311,38 @@ const handleRunQuery = async () => {
   try {
     setLoadingResults(true);
     setTransactionStatus('Processing...');
+    // Clear any previous errors when starting a new query
+    setHasError(false);
+    setLastError(null);
 
-    // 1) Connect and switch to Base Sepolia
+    // 1) Ensure wallet is on the selected network (base or base_sepolia)
     let provider = new ethers.BrowserProvider(window.ethereum);
-    provider = await switchToBaseSepolia(provider);
+    provider = await ensureCorrectNetwork(provider); // respects REACT_APP_NETWORK
+
+   // Quick existence check
+   const roProvider = getReadOnlyProvider(); // uses RPC_URL for selected network
+   // Verify the selected address actually exists on this chain
+   const codeAtAddr = await roProvider.getCode(contractAddress);
+   if (codeAtAddr === '0x') {
+     setTransactionStatus(`Error: No contract at ${contractAddress} on ${CURRENT_NETWORK.name}`);
+     alert(`No contract at ${contractAddress} on ${CURRENT_NETWORK.name}. Did you pick the right address for this network?`);
+     setLoadingResults(false);
+     return;
+   }
+
     const signer = await provider.getSigner();
     const writeContract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
     const readContract  = new ethers.Contract(
-       contractAddress, CONTRACT_ABI, getReadOnlyProvider());
+       contractAddress, CONTRACT_ABI, roProvider);
 
     // 2) Check contract funding
     // setTransactionStatus?.('Checking contract funding...');
     // await checkContractFunding(contract, provider);
     const config = await readContract.getContractConfig();
     const linkTokenAddress = config.linkAddr;
+    if ((await roProvider.getCode(linkTokenAddress)) === '0x') {
+      throw new Error(`LINK token not found at ${linkTokenAddress} on ${CURRENT_NETWORK.name}`);
+    }
 
     // Read the on-chain responseTimeoutSeconds so UI stays in sync
     const responseTimeoutSeconds = Number(
@@ -363,6 +431,9 @@ const handleRunQuery = async () => {
       });
     } catch (err) {
       console.error('LINK approval error:', err);
+      // Set error state for debug functionality
+      setHasError(true);
+      setLastError(err);
       // Bail out early; the main tx will fail without allowance
       setTransactionStatus(`Error: ${err.message}`);
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -411,13 +482,13 @@ const handleRunQuery = async () => {
       setTransactionStatus?.('Sending transaction...');
       const tx = await writeContract.requestAIEvaluationWithApproval(
         cidArray,
-	textAddendum.trim(),
+        textAddendum.trim(),
         alpha,
         maxFee,
         estimatedBaseCost,
         maxFeeBasedScalingFactor,
-	selectedContractClass === undefined ? 128 : selectedContractClass,
-        { 
+        selectedContractClass === undefined ? 128 : selectedContractClass,
+        {
           gasLimit: 4500000, // high current gas limit
           maxFeePerGas: adjustedMaxFee,
           maxPriorityFeePerGas: adjustedPriorityFee
@@ -486,6 +557,10 @@ if (result.status === 'timed-out') {
       setCurrentPage(PAGES.RESULTS);
     } catch (error) {
       console.error('Error running query:', error);
+      // Set error state to enable debug functionality
+      setHasError(true);
+      setLastError(error);
+
       if (error.message.includes('Insufficient LINK tokens')) {
         const errorMessage = `Contract doesn't have enough LINK tokens to perform this operation.
 
@@ -602,42 +677,42 @@ This blockchain operation requires LINK tokens to pay for the AI jury service. P
             </div>
           )}
 
-	{selectedMethod === 'ipfs' && (
-	  <div className="cid-input">
-	    <label>Enter Query Package CID(s)</label>
-	    <input
-	      type="text"
-	      className={showingDefaultCid ? 'default-value' : ''}
-	      value={showingDefaultCid ? DEFAULT_QUERY_CID : queryPackageCid}
-	      onFocus={() => {
-	        // Clear default value when field is focused
-	        if (showingDefaultCid) {
-	          setShowingDefaultCid(false);
-	          setQueryPackageCid('');
-	        }
-	      }}
-	      onChange={(e) => {
-	        // Set exactly what the user typed/pasted
-	        setQueryPackageCid(e.target.value);
-	        // Ensure we're not showing default anymore once user has typed something
-	        if (showingDefaultCid) {
-	          setShowingDefaultCid(false);
-	        }
-	      }}
-	      placeholder="Enter one or more CIDs separated by commas"
-	    />
-	    <small className="helper-text">For multiple CIDs, separate them with commas. Only the first CID will be used to display package details.</small>
-	    
-	    <label>Optional Text Addendum</label>
-	    <input
-	      type="text"
-	      className="text-addendum"
-	      placeholder="Add optional text here"
-	      value={textAddendum}
-	      onChange={(e) => setTextAddendum(e.target.value)}
-	    />
-	  </div>
-	)}
+        {selectedMethod === 'ipfs' && (
+          <div className="cid-input">
+            <label>Enter Query Package CID(s)</label>
+            <input
+              type="text"
+              className={showingDefaultCid ? 'default-value' : ''}
+              value={showingDefaultCid ? DEFAULT_QUERY_CID : queryPackageCid}
+              onFocus={() => {
+                // Clear default value when field is focused
+                if (showingDefaultCid) {
+                  setShowingDefaultCid(false);
+                  setQueryPackageCid('');
+                }
+              }}
+              onChange={(e) => {
+                // Set exactly what the user typed/pasted
+                setQueryPackageCid(e.target.value);
+                // Ensure we're not showing default anymore once user has typed something
+                if (showingDefaultCid) {
+                  setShowingDefaultCid(false);
+                }
+              }}
+              placeholder="Enter one or more CIDs separated by commas"
+            />
+            <small className="helper-text">For multiple CIDs, separate them with commas. Only the first CID will be used to display package details.</small>
+
+            <label>Optional Text Addendum</label>
+            <input
+              type="text"
+              className="text-addendum"
+              placeholder="Add optional text here"
+              value={textAddendum}
+              onChange={(e) => setTextAddendum(e.target.value)}
+            />
+          </div>
+        )}
 
         </div>
         <div className="actions">
@@ -646,7 +721,7 @@ This blockchain operation requires LINK tokens to pay for the AI jury service. P
             onClick={handleRunQuery}
             disabled={loadingResults || (selectedMethod === 'file' && !queryPackageFile)}
           >
-	  {loadingResults ? (
+          {loadingResults ? (
             <>
               <span className="spinner"></span>
               {transactionStatus || 'Processing…'}
@@ -658,6 +733,18 @@ This blockchain operation requires LINK tokens to pay for the AI jury service. P
             'Run Query'
           )}
           </button>
+
+          {isConnected && hasError && (
+            <button
+              className="secondary debug-button"
+              onClick={debugContractIssues}
+              disabled={loadingResults}
+              style={{ marginLeft: '10px', fontSize: '14px' }}
+              title="Debug contract issues and analyze the last error"
+            >
+              🔍 Debug Contract
+            </button>
+          )}
         </div>
       </div>
     </div>
